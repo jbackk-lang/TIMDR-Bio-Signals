@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>TIMDR-Bio-Signals — Dashboard</title>
+<style>
+  :root{
+    --bg: #0e1420; --panel: #161e2d; --panel-border: #253248;
+    --text: #e6edf5; --muted: #8393ab;
+    --ok: #35d488; --warn: #f5a623; --crit: #ef4b5f; --accent: #4f9dff; --violet:#a78bfa;
+    --mono: "Consolas","SFMono-Regular",Menlo,monospace;
+  }
+  *{box-sizing:border-box;}
+  body{ margin:0; background:var(--bg); color:var(--text); font-family:"Segoe UI",Arial,sans-serif; padding:20px 28px 40px; }
+  header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; flex-wrap:wrap; gap:10px; }
+  header h1{ font-size:20px; margin:0; font-weight:600; }
+  header .sub{ color:var(--muted); font-size:12px; font-family:var(--mono); }
+  .status-pill{ padding:5px 14px; border-radius:20px; font-size:12px; font-weight:700; letter-spacing:.5px; text-transform:uppercase; }
+  .status-ok{ background:rgba(53,212,136,.15); color:var(--ok); border:1px solid var(--ok); }
+  .status-warn{ background:rgba(245,166,35,.15); color:var(--warn); border:1px solid var(--warn); }
+  .status-crit{ background:rgba(239,75,95,.15); color:var(--crit); border:1px solid var(--crit); }
+
+  .disclaimer{ background:rgba(239,75,95,.08); border:1px solid var(--crit); color:#ffb4c0; border-radius:8px; padding:10px 14px; font-size:12px; margin-bottom:16px; line-height:1.5; }
+  .disclaimer b{ color:#fff; }
+
+  .controls{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; background:var(--panel); border:1px solid var(--panel-border); border-radius:10px; padding:12px 16px; margin-bottom:14px; }
+  .controls label{ font-size:12px; color:var(--muted); margin-right:4px; }
+  .controls select{ background:#0c121d; border:1px solid var(--panel-border); color:var(--text); border-radius:6px; padding:6px 8px; font-size:12px; max-width:280px; }
+  .controls button{ background:var(--accent); color:#04101f; border:none; border-radius:6px; padding:8px 16px; font-weight:700; font-size:12px; cursor:pointer; }
+  .controls button:hover{ filter:brightness(1.1); }
+  #err{ color:var(--crit); font-size:12px; font-family:var(--mono); margin-left:auto; white-space:pre-wrap; max-width:420px; }
+  .note{ font-size:12px; color:var(--muted); margin:2px 0 16px 2px; font-style:italic; }
+
+  .cards{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin-bottom:18px; }
+  .card{ background:var(--panel); border:1px solid var(--panel-border); border-radius:10px; padding:16px 18px; }
+  .card .label{ font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.6px; }
+  .card .value{ font-size:22px; font-weight:700; margin-top:6px; font-family:var(--mono); }
+
+  .panel{ background:var(--panel); border:1px solid var(--panel-border); border-radius:10px; padding:16px 18px; margin-bottom:14px; }
+  .panel h2{ font-size:13px; margin:0 0 10px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; font-weight:600; }
+  .legend{ font-size:10px; color:var(--muted); margin-bottom:6px; }
+  .legend span{ margin-right:12px; }
+  .legend .dot{ display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:4px; }
+  canvas{ max-width:100%; display:block; }
+  footer{ margin-top:20px; color:var(--muted); font-size:11px; font-family:var(--mono); }
+  .findings{ font-size:12px; line-height:1.7; }
+  .findings .warn-row{ color: var(--warn); }
+  .findings .crit-row{ color: var(--crit); }
+  .findings .ok-row{ color: var(--ok); }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>🫀 TIMDR-Bio-Signals</h1>
+    <div class="sub">EKG · EEG · puls · oddech — rhythm / anomalies / twist / trend</div>
+  </div>
+  <div id="statusPill" class="status-pill status-ok">brak danych</div>
+</header>
+
+<div class="disclaimer">
+  <b>Zastrzeżenie:</b> narzędzie badawczo-edukacyjne. NIE jest wyrobem medycznym, nie diagnozuje i nie zastępuje
+  personelu medycznego ani certyfikowanego sprzętu. Dane demo są w całości syntetyczne (matematycznie wygenerowane).
+</div>
+
+<div class="controls">
+  <label>scenariusz demo</label>
+  <select id="inScenario"></select>
+  <button id="btnAnalyze">▶ Analizuj scenariusz</button>
+  <span id="err"></span>
+</div>
+<div class="note" id="dataNote">Wybierz scenariusz i kliknij "Analizuj" — wszystkie dane tutaj są syntetyczne (demo).</div>
+
+<div class="cards" id="cardsBox"></div>
+
+<div class="panel">
+  <h2>Sygnał</h2>
+  <div class="legend">
+    <span><i class="dot" style="background:#4f9dff"></i>sygnał</span>
+    <span><i class="dot" style="background:#ef4b5f"></i>anomalie / szczyty</span>
+    <span><i class="dot" style="background:#f5a623"></i>epizod (jeśli wstrzyknięty w demo)</span>
+  </div>
+  <canvas id="chartSignal" height="240"></canvas>
+</div>
+
+<div class="panel">
+  <h2>Wyniki analizy</h2>
+  <div class="findings" id="findingsBox">—</div>
+</div>
+
+<footer>TIMDR-Bio-Signals · lokalne API (Flask, 127.0.0.1:5050) · wykresy Canvas 2D, bez CDN</footer>
+
+<script>
+'use strict';
+const COLORS = { ok:'#35d488', warn:'#f5a623', crit:'#ef4b5f', accent:'#4f9dff', violet:'#a78bfa', muted:'#8393ab', grid:'#1c2536', axis:'#8393ab' };
+
+function showError(msg){
+  document.getElementById('err').textContent = msg;
+  if (msg) console.error('[dashboard]', msg);
+}
+function fmt(x, digits){
+  if (x === null || x === undefined || Number.isNaN(x)) return '—';
+  return Number(x).toFixed(digits === undefined ? 2 : digits);
+}
+
+function drawChart(canvas, opts){
+  if (!canvas) return;
+  const parentWidth = canvas.parentElement ? canvas.parentElement.clientWidth : 400;
+  const cssWidth = Math.max(200, parentWidth);
+  const cssHeight = opts.height || 200;
+  const dpr = window.devicePixelRatio || 1;
+
+  canvas.style.width = cssWidth + 'px';
+  canvas.style.height = cssHeight + 'px';
+  canvas.width = Math.round(cssWidth * dpr);
+  canvas.height = Math.round(cssHeight * dpr);
+
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssWidth, cssHeight);
+
+  const n = (opts.x || []).length;
+  const pad = { left: 46, right: 10, top: 8, bottom: 16 };
+  const plotW = Math.max(10, cssWidth - pad.left - pad.right);
+  const plotH = Math.max(10, cssHeight - pad.top - pad.bottom);
+
+  if (n === 0){
+    ctx.fillStyle = COLORS.muted; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('brak danych', cssWidth / 2, cssHeight / 2);
+    return;
+  }
+
+  const t = opts.t || opts.x.map((_, i) => i);
+  const tMin = t[0], tMax = t[t.length - 1];
+  const xAt = i => pad.left + (tMax === tMin ? plotW / 2 : ((t[i] - tMin) / (tMax - tMin)) * plotW);
+
+  const allY = opts.x.filter(v => isFinite(v));
+  let yMin = Math.min(...allY), yMax = Math.max(...allY);
+  if (yMin === yMax){ yMin -= 1; yMax += 1; }
+  const yPad = (yMax - yMin) * 0.1;
+  yMin -= yPad; yMax += yPad;
+  const yAt = v => pad.top + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
+
+  ctx.strokeStyle = COLORS.grid; ctx.lineWidth = 1;
+  ctx.fillStyle = COLORS.axis; ctx.font = '9px monospace'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  for (let g = 0; g <= 4; g++){
+    const yy = pad.top + (g / 4) * plotH;
+    ctx.beginPath(); ctx.moveTo(pad.left, yy); ctx.lineTo(pad.left + plotW, yy); ctx.stroke();
+    const val = yMax - (g / 4) * (yMax - yMin);
+    ctx.fillText(fmt(val, Math.abs(val) < 10 ? 2 : 0), pad.left - 4, yy);
+  }
+
+  // pasma epizodow (jesli podane)
+  (opts.bands || []).forEach(b => {
+    const x0 = pad.left + ((b.start - tMin) / (tMax - tMin)) * plotW;
+    const x1 = pad.left + ((b.end - tMin) / (tMax - tMin)) * plotW;
+    ctx.fillStyle = b.color || 'rgba(245,166,35,0.15)';
+    ctx.fillRect(x0, pad.top, Math.max(1, x1 - x0), plotH);
+  });
+
+  // linia sygnalu
+  ctx.strokeStyle = COLORS.accent; ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  for (let i = 0; i < n; i++){
+    const xx = xAt(i), yy = yAt(opts.x[i]);
+    if (i === 0) ctx.moveTo(xx, yy); else ctx.lineTo(xx, yy);
+  }
+  ctx.stroke();
+
+  // markery (anomalie / szczyty)
+  (opts.markers || []).forEach(m => {
+    ctx.fillStyle = m.color || COLORS.crit;
+    (m.indices || []).forEach(i => {
+      if (i < 0 || i >= n) return;
+      const xx = xAt(i), yy = yAt(opts.x[i]);
+      ctx.beginPath();
+      ctx.arc(xx, yy, m.radius || 2.5, 0, 2 * Math.PI);
+      ctx.fill();
+    });
+  });
+
+  ctx.fillStyle = COLORS.axis; ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.font = '9px monospace';
+  const xTicks = Math.min(6, n);
+  for (let k = 0; k < xTicks; k++){
+    const idx = Math.round(k * (n - 1) / Math.max(1, xTicks - 1));
+    ctx.fillText(fmt(t[idx], 0) + 's', xAt(idx), pad.top + plotH + 2);
+  }
+}
+
+async function loadScenarios(){
+  const res = await fetch('/api/scenarios');
+  const data = await res.json();
+  const sel = document.getElementById('inScenario');
+  sel.innerHTML = '';
+  Object.entries(data.scenarios).forEach(([key, meta]) => {
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = meta.label;
+    sel.appendChild(opt);
+  });
+}
+
+async function analyze(){
+  showError('');
+  const scenario = document.getElementById('inScenario').value;
+  document.getElementById('dataNote').textContent = `Analizuję scenariusz demo: ${scenario}...`;
+  const res = await fetch('/api/demo?scenario=' + encodeURIComponent(scenario));
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  render(data);
+}
+
+function setStatus(data){
+  const pill = document.getElementById('statusPill');
+  pill.classList.remove('status-ok', 'status-warn', 'status-crit');
+  let bad = false, warnFlag = false;
+  if (data.arrhythmia_suspected) bad = true;
+  if ((data.anomalies_idx && data.anomalies_idx.length > 0) || (data.envelope_drop_ranges && data.envelope_drop_ranges.length > 0)) warnFlag = true;
+  if (bad){ pill.textContent = 'wykryto odchylenie'; pill.classList.add('status-crit'); }
+  else if (warnFlag){ pill.textContent = 'wykryto anomalię'; pill.classList.add('status-warn'); }
+  else { pill.textContent = 'sygnał w normie'; pill.classList.add('status-ok'); }
+}
+
+function renderCards(data){
+  const box = document.getElementById('cardsBox');
+  box.innerHTML = '';
+  const cards = [];
+
+  if (data.signal_type === 'ecg'){
+    cards.push(['Uderzenia (R)', data.n_peaks]);
+    cards.push(['Tętno (bpm)', data.bpm !== null ? fmt(data.bpm, 0) : '—']);
+    cards.push(['Zmienność RR (cv)', data.rr_cv !== null ? fmt(data.rr_cv, 3) : '—']);
+    cards.push(['Niemiarowość?', data.arrhythmia_suspected ? 'PODEJRZENIE' : 'nie']);
+    cards.push(['Nietypowe uderzenia', (data.beat_amplitude_anomalies || []).length]);
+  } else {
+    cards.push(['Moc rytmu', fmt(data.rhythm_power, 3)]);
+    cards.push(['Anomalie', (data.anomalies_idx || []).length]);
+    cards.push(['Nagłe zmiany (twist)', (data.twist_idx || []).length]);
+    cards.push(['Spadki obwiedni', (data.envelope_drop_ranges || []).length]);
+    cards.push(['Trend (nachylenie)', fmt(data.recent_trend_slope, 4)]);
+  }
+
+  cards.forEach(([label, value]) => {
+    const div = document.createElement('div');
+    div.className = 'card';
+    div.innerHTML = `<div class="label">${label}</div><div class="value">${value}</div>`;
+    box.appendChild(div);
+  });
+}
+
+function renderFindings(data){
+  const box = document.getElementById('findingsBox');
+  const lines = [];
+
+  if (data.signal_type === 'ecg'){
+    lines.push(`<div>Wykryto <b>${data.n_peaks}</b> uderzeń, średnie RR = ${fmt(data.mean_rr_s,3)}s (~${fmt(data.bpm,0)} bpm).</div>`);
+    if (data.arrhythmia_suspected){
+      lines.push(`<div class="crit-row">⚠ Zmienność odstępów RR (cv=${fmt(data.rr_cv,3)}) powyżej progu demonstracyjnego (0.08) — podejrzenie niemiarowości.</div>`);
+    } else {
+      lines.push(`<div class="ok-row">✓ Rytm regularny (cv=${fmt(data.rr_cv,3)}).</div>`);
+    }
+    if ((data.beat_amplitude_anomalies || []).length){
+      lines.push(`<div class="warn-row">${data.beat_amplitude_anomalies.length} uderzeń o nietypowej amplitudzie względem pozostałych.</div>`);
+    }
+  } else {
+    if (data.rhythm_power > 0.35){
+      lines.push(`<div class="ok-row">✓ Wykryto wyraźną okresowość (moc=${fmt(data.rhythm_power,3)}, okres≈${data.rhythm_periods_samples[0]} próbek).</div>`);
+    } else {
+      lines.push(`<div class="warn-row">Brak wyraźnej okresowości sygnału (moc=${fmt(data.rhythm_power,3)}).</div>`);
+    }
+    if ((data.anomalies_idx || []).length){
+      lines.push(`<div class="warn-row">${data.anomalies_idx.length} pojedynczych anomalii amplitudy.</div>`);
+    }
+    if ((data.twist_idx || []).length){
+      lines.push(`<div class="warn-row">${data.twist_idx.length} nagłych zmian tempa sygnału (twist).</div>`);
+    }
+    if ((data.envelope_drop_ranges || []).length){
+      data.envelope_drop_ranges.forEach(r => {
+        lines.push(`<div class="crit-row">⚠ Spadek zmienności sygnału (możliwy epizod bezruchu/bezdechu): ${fmt(r.start_s,1)}s–${fmt(r.end_s,1)}s.</div>`);
+      });
+    }
+  }
+
+  for (const key of ['irregular_window_s', 'burst_window_s', 'event_window_s', 'apnea_window_s']){
+    if (data[key]){
+      lines.push(`<div style="color:var(--muted); margin-top:6px;">(prawdziwy wstrzyknięty epizod w danych demo: ${fmt(data[key][0],1)}s–${fmt(data[key][1],1)}s)</div>`);
+    }
+  }
+
+  box.innerHTML = lines.join('');
+}
+
+function render(data){
+  document.getElementById('dataNote').textContent = `${data.label} — dane syntetyczne (demo).`;
+  setStatus(data);
+  renderCards(data);
+  renderFindings(data);
+
+  const bands = [];
+  for (const key of ['irregular_window_s', 'burst_window_s', 'event_window_s', 'apnea_window_s']){
+    if (data[key]) bands.push({ start: data[key][0], end: data[key][1] });
+  }
+
+  const markers = [];
+  if (data.signal_type === 'ecg' && data.peaks){
+    markers.push({ indices: data.peaks, color: COLORS.ok, radius: 2 });
+    if (data.beat_amplitude_anomalies && data.beat_amplitude_anomalies.length){
+      const idxSet = new Set(data.beat_amplitude_anomalies);
+      markers.push({ indices: data.peaks.filter(p => idxSet.has(p)), color: COLORS.crit, radius: 4 });
+    }
+  } else {
+    if (data.anomalies_idx) markers.push({ indices: data.anomalies_idx, color: COLORS.crit, radius: 2.5 });
+    if (data.twist_idx) markers.push({ indices: data.twist_idx, color: COLORS.violet, radius: 2.5 });
+  }
+
+  drawChart(document.getElementById('chartSignal'), {
+    height: 260, t: data.t, x: data.x, bands, markers,
+  });
+}
+
+document.getElementById('btnAnalyze').addEventListener('click', () => analyze().catch(e => showError(e.message)));
+
+(async () => {
+  await loadScenarios();
+  analyze().catch(e => showError(e.message));
+})();
+</script>
+</body>
+</html>
