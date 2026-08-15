@@ -5,11 +5,20 @@ max_lag dobranym pod naturalny zakres okresów danego typu sygnału;
 puls (już jest ciągiem "tętno w bpm", nie surowym EKG) i oddech
 dodatkowo sprawdzane pod kątem envelope_drop() (bezdech).
 
+Wykrywanie załamków R w EKG używa TERAZ pan_tompkins_qrs() (dsp.py)
+zamiast prostego detect_peaks() - zweryfikowano empirycznie
+(test_dsp.py: test_pan_tompkins_odporny_na_dryf_liniowy_bazowej), że
+Pan-Tompkins jest odporny na dryf linii bazowej, którego detect_peaks()
+nie wytrzymuje. Sygnały EEG/oddech dodatkowo pokazują dominującą
+częstotliwość z widma mocy (power_spectrum, metoda Welcha) - patrz
+dsp.py, dlaczego NIE robimy tego dla surowego EKG.
+
 NIE jest to narzędzie diagnostyczne - patrz README.md.
 """
 
 from bio_core import TIMDRBioSignal
 from demo_scenarios import SCENARIOS, make_demo_data
+from dsp import pan_tompkins_qrs, power_spectrum
 
 # max_lag (w próbkach) dobrany pod oczekiwany zakres okresu dla danego typu
 # sygnału - zbyt duży max_lag dla szybkich oscylacji (np. EEG) rozmywa
@@ -35,8 +44,7 @@ def run_scenario(name: str):
     print(f"n={len(x)}  fs={fs}  czas trwania={t[-1]:.1f}s")
 
     if sig_type == "ecg":
-        distance = int(0.3 * fs)  # min. odstęp między załamkami R: 0.3s (~200 bpm max)
-        peaks = eng.detect_peaks(x, distance=distance)
+        peaks = pan_tompkins_qrs(x, fs)
         reg = eng.rhythm_regularity(peaks, t=t)
         print(f"wykryte załamki R: {len(peaks)}")
         if reg["mean_interval"] is not None:
@@ -68,6 +76,10 @@ def run_scenario(name: str):
         twist_idx = eng.twist(x, t=t, factor=3.5)
         print(f"rhythm: moc={power:.3f}  okresy(próbki)={periods[:3]}")
         print(f"anomalies: {len(anomalies)}  twist: {len(twist_idx)}")
+
+        spec = power_spectrum(x, fs)
+        if spec["dominant_freq"] is not None:
+            print(f"widmo mocy (Welch): dominująca częstotliwość={spec['dominant_freq']:.3f}Hz")
 
         if sig_type in ENVELOPE_WINDOW_S_BY_TYPE:
             window = int(ENVELOPE_WINDOW_S_BY_TYPE[sig_type] * fs)

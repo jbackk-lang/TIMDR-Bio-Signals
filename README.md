@@ -35,16 +35,21 @@ otworzy dashboard pod `http://127.0.0.1:5050`.
 - `bio_core.py` — silnik: `TIMDRBioSignal` (anomalie, rytm, twist,
   trend, wykrywanie szczytów, spadki obwiedni) + `TIMDRBioFusion`
   (fuzja wielokanałowa).
+- `dsp.py` — filtracja Butterwortha (offline zerofazowa + kauzalna
+  strumieniowa), detektor QRS Pan-Tompkins, widmo mocy metodą Welcha.
+  Patrz sekcja "Nowe funkcje DSP" niżej.
 - `demo_scenarios.py` — 8 syntetycznych scenariuszy demo (EKG
   normalne/arytmia, EEG normalne/napadopodobne, puls
   normalny/tachykardia, oddech normalny/bezdech).
 - `demo.py` — uruchamia wszystkie scenariusze w konsoli.
 - `api.py` — Flask, port 5050: `/`, `/api/health`, `/api/scenarios`,
-  `/api/demo?scenario=...`, `POST /api/analyze` (własny sygnał).
-- `static/dashboard.html` — panel: wybór scenariusza, karty z
-  wynikami, wykres sygnału z zaznaczonymi szczytami/anomaliami/
-  zakresami spadku obwiedni.
-- `test_bio_core.py`, `test_demo_scenarios.py` — 33 testy (pytest).
+  `/api/demo?scenario=...`, `POST /api/analyze` (własny sygnał),
+  eksport JSON/CSV, streaming SSE (`/api/stream`).
+- `static/dashboard.html` — panel: wybór scenariusza, przełącznik
+  filtra Butterwortha, przyciski eksportu, tryb "na żywo" (symulacja
+  streamingu), karty z wynikami, wykres sygnału, wykres widma mocy.
+- `test_bio_core.py`, `test_demo_scenarios.py`, `test_dsp.py` — 50
+  testów (pytest).
 - `candidate_user.py` — kod klasy `TIMDRBio` nadesłany do wglądu w
   trakcie budowy tego repo, zachowany wyłącznie do testów
   porównawczych (patrz "Kod nadesłany do wglądu" niżej). **Nie jest
@@ -57,8 +62,11 @@ otworzy dashboard pod `http://127.0.0.1:5050`.
 | GET | `/` | dashboard |
 | GET | `/api/health` | healthcheck + zastrzeżenie |
 | GET | `/api/scenarios` | lista scenariuszy demo |
-| GET | `/api/demo?scenario=ecg_normal` | analiza scenariusza demo |
-| POST | `/api/analyze` | analiza własnego sygnału: `{signal_type, fs, values}` |
+| GET | `/api/demo?scenario=ecg_normal&filter=1` | analiza scenariusza demo (opcjonalny filtr pasmowoprzepustowy) |
+| POST | `/api/analyze` | analiza własnego sygnału: `{signal_type, fs, values, filter}` |
+| GET | `/api/export/demo?scenario=...&format=csv\|json` | eksport wyniku analizy scenariusza demo do pliku |
+| POST | `/api/export/analyze` | eksport analizy własnego sygnału do pliku (`{..., format}`) |
+| GET | `/api/stream?scenario=...&speed=20` | symulowany strumień "na żywo" (Server-Sent Events) |
 
 ## Testy
 
@@ -66,7 +74,111 @@ otworzy dashboard pod `http://127.0.0.1:5050`.
 python -m pytest -q
 ```
 
-33/33 testów przechodzi (`test_bio_core.py` + `test_demo_scenarios.py`).
+50/50 testów przechodzi (`test_bio_core.py` + `test_demo_scenarios.py` + `test_dsp.py`).
+
+## Nowe funkcje DSP (`dsp.py`)
+
+### Filtracja pasmowoprzepustowa Butterwortha
+
+Dwie implementacje, do dwóch różnych zastosowań:
+
+- `butter_bandpass_filter(x, fs, low, high, order)` — **offline,
+  zerofazowa** (`scipy.signal.filtfilt`) - filtruje w przód i w tył,
+  więc wynik nie ma przesunięcia czasowego względem oryginału. Wymaga
+  całego sygnału na raz - **nie nadaje się do przetwarzania na żywo**
+  (musiałaby "znać przyszłość"). Używana w dashboardzie (przełącznik
+  "filtr pasmowoprzepustowy") i wewnętrznie przez `pan_tompkins_qrs()`.
+- `CausalBandpassFilter` — **kauzalna**, z utrzymywanym stanem
+  (`scipy.signal.lfilter` + `zi`) między kolejnymi wywołaniami
+  `process()`. Używana przez `/api/stream` do przetwarzania danych
+  napływających porcjami. Zweryfikowano empirycznie
+  (`test_dsp.py::test_causal_filter_stan_ciagly_miedzy_porcjami`):
+  przetwarzanie tego samego sygnału w jednym wywołaniu vs. w dwóch
+  porcjach daje IDENTYCZNY wynik (różnica < 1e-9), o ile stan jest
+  zachowany - a bez zachowania stanu (`test_causal_filter_bez_stanu_dawalby_skok_na_granicy`)
+  na granicy porcji powstaje widoczny skok (>0.01 różnicy amplitudy).
+
+**Filtracja offline vs strumieniowa - dlaczego to ważne:** offline
+(`filtfilt`) daje "ładniejszy" wynik (zero przesunięcia fazowego), ale
+tylko dla danych, które już w całości mamy. Dla prawdziwego streamingu
+(dane przychodzą próbka-po-próbce/porcja-po-porcji) trzeba użyć wersji
+kauzalnej, która wprowadza niewielkie, ale nieuniknione opóźnienie
+fazowe - to fundamentalne ograniczenie fizyczne (kauzalny filtr nie
+może "zobaczyć" próbek, które jeszcze nie nadeszły), nie błąd
+implementacji.
+
+### Detektor QRS Pan-Tompkins (`pan_tompkins_qrs`)
+
+Klasyczny algorytm (Pan & Tompkins, 1985): filtr 5-15Hz → pochodna →
+kwadrat → całkowanie w oknie ~150ms → adaptacyjny próg z okresem
+refrakcji → mapowanie z powrotem na szczyty oryginalnego sygnału.
+
+**Dlaczego to ulepszenie, nie tylko alternatywa dla `detect_peaks()`:**
+zweryfikowano empirycznie (`test_dsp.py::test_pan_tompkins_odporny_na_dryf_liniowy_bazowej`),
+że po dodaniu do czystego demo EKG realistycznego, wolnego dryfu linii
+bazowej (0.3Hz, amplituda porównywalna z QRS - typowe dla ruchu
+pacjenta/oddychania przy realnym EKG):
+
+- `detect_peaks()` (prosty próg oparty o globalne `std(x)`) traci
+  większość uderzeń: **70 → 18 wykrytych** (próg rozregulowany przez
+  dryf).
+- `pan_tompkins_qrs()` pozostaje w pełni stabilny: **70 → 70
+  wykrytych** (pasmo 5-15Hz usuwa dryf PRZED wykrywaniem szczytów).
+
+`api.py`/`demo.py` używają teraz `pan_tompkins_qrs()` jako domyślnej
+metody wykrywania załamków R dla EKG (`detect_peaks()` pozostaje w
+`bio_core.py` jako ogólny detektor szczytów dla innych zastosowań, np.
+cykli oddechowych).
+
+### Widmo mocy (`power_spectrum`, metoda Welcha)
+
+Zwraca częstotliwości, moc oraz częstotliwość/moc dominującą. Metoda
+Welcha (nakładające się okna, uśrednianie) zamiast surowego
+periodogramu - dużo mniej szumu wariancji.
+
+**Zweryfikowano poprawność na sygnałach o znanej częstotliwości:**
+EEG (10Hz alfa) → wykryte 10.0Hz; oddech (~15/min=0.25Hz) → wykryte
+0.253Hz.
+
+**Znaleziony i naprawiony błąd:** domyślny rozmiar okna Welcha był
+zbyt mały (stały cap 256 próbek) - dla EKG (fs=250Hz, n=15000) dawało
+to rozdzielczość ~1Hz, za grubą, by odróżnić częstotliwość
+fundamentalną (~1.17Hz przy 70bpm) od jej najbliższej harmonicznej.
+Skutek: `dominant_freq` błędnie wychodziło ~1.95Hz zamiast ~1.17Hz.
+Naprawiono podniesieniem górnego capu okna do 2048 próbek.
+
+**Udokumentowane ograniczenie (nie błąd):** nawet z poprawionym
+oknem, dla **surowego przebiegu EKG** (kształt impulsowy zespołów QRS)
+`dominant_freq` bywa niedokładne (moc widma rozkłada się na kilka
+bliskich harmonicznych zamiast jednego ostrego szczytu na
+częstotliwości fundamentalnej - to naturalna cecha widma sygnałów
+impulsowych, nie artefakt implementacji). Dlatego `api.py` zwraca dla
+EKG `spectrum` tylko informacyjnie, z jawną notatką
+(`spectrum_note`) kierującą do pola `bpm` (liczonego z odstępów RR
+przez `pan_tompkins_qrs` + `rhythm_regularity`) jako właściwego źródła
+częstotliwości rytmu serca. Dla EEG/oddechu (sygnały gładkie,
+oscylacyjne) `power_spectrum()` działa dokładnie i jest głównym
+źródłem informacji o częstotliwości.
+
+## Filtr, eksport, streaming - jak używać
+
+- **Filtr:** zaznacz "filtr pasmowoprzepustowy (Butterworth)" w
+  dashboardzie przed analizą scenariusza - pasmo dobierane
+  automatycznie pod typ sygnału (EKG 0.5-40Hz, EEG 1-45Hz, oddech
+  0.05-1Hz; puls pomijany - zbyt niska częstotliwość próbkowania,
+  fs=0.5Hz, na sensowną filtrację pasmowoprzepustową).
+- **Eksport:** przyciski "CSV"/"JSON" pobierają bieżący scenariusz
+  (z uwzględnieniem stanu przełącznika filtra) jako plik. CSV zawiera
+  tabelę czas/wartość/[przefiltrowane]/znaczniki (szczyty/anomalie);
+  JSON zawiera pełny wynik analizy wraz z metadanymi (bpm, moc rytmu
+  itd.).
+- **Na żywo:** przycisk "📡 Symuluj na żywo" otwiera połączenie SSE
+  (`/api/stream`), które odtwarza gotowy sygnał demo z przyspieszeniem
+  czasowym (np. 20-60x, dobranym pod typ sygnału - inaczej demo pulsu
+  trwałoby 10 minut) i co ~2 sekundy nowych danych przelicza pełną
+  analizę na **ostatnim oknie** (nie całej historii - tak jak
+  prawdziwy monitor). To symulacja do celów demonstracyjnych, NIE
+  prawdziwa akwizycja z urządzenia.
 
 ## Znalezione i naprawione błędy
 

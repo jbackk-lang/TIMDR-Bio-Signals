@@ -7,7 +7,7 @@ echo  -edukacyjne. Patrz README.md.
 echo ============================================================
 echo.
 echo Instalacja/aktualizacja zaleznosci...
-pip install --quiet flask numpy pytest
+pip install --quiet flask numpy scipy pytest
 if errorlevel 1 (
     echo BLAD: nie udalo sie zainstalowac zaleznosci pip.
     pause
