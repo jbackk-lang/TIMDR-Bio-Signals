@@ -28,8 +28,17 @@
   .controls select{ background:#0c121d; border:1px solid var(--panel-border); color:var(--text); border-radius:6px; padding:6px 8px; font-size:12px; max-width:280px; }
   .controls button{ background:var(--accent); color:#04101f; border:none; border-radius:6px; padding:8px 16px; font-weight:700; font-size:12px; cursor:pointer; }
   .controls button:hover{ filter:brightness(1.1); }
+  .controls button:disabled{ opacity:.45; cursor:not-allowed; filter:none; }
+  .controls button.secondary{ background:#232f45; color:var(--text); border:1px solid var(--panel-border); }
+  .controls button.live-on{ background:var(--crit); color:#fff; }
+  .controls .checkline{ display:flex; align-items:center; gap:5px; font-size:12px; color:var(--muted); }
   #err{ color:var(--crit); font-size:12px; font-family:var(--mono); margin-left:auto; white-space:pre-wrap; max-width:420px; }
   .note{ font-size:12px; color:var(--muted); margin:2px 0 16px 2px; font-style:italic; }
+  .live-badge{ display:none; align-items:center; gap:6px; font-size:11px; color:var(--crit); font-weight:700; text-transform:uppercase; letter-spacing:.5px; }
+  .live-badge.active{ display:inline-flex; }
+  .live-dot{ width:8px; height:8px; border-radius:50%; background:var(--crit); animation:pulse 1s infinite; }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:.25;} }
+  .spectrum-note{ font-size:11px; color:var(--muted); margin-top:6px; font-style:italic; }
 
   .cards{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin-bottom:18px; }
   .card{ background:var(--panel); border:1px solid var(--panel-border); border-radius:10px; padding:16px 18px; }
@@ -56,18 +65,26 @@
     <h1>🫀 TIMDR-Bio-Signals</h1>
     <div class="sub">EKG · EEG · puls · oddech — rhythm / anomalies / twist / trend</div>
   </div>
-  <div id="statusPill" class="status-pill status-ok">brak danych</div>
+  <div style="display:flex; align-items:center; gap:12px;">
+    <span id="liveBadge" class="live-badge"><span class="live-dot"></span>NA ŻYWO (symulacja)</span>
+    <div id="statusPill" class="status-pill status-ok">brak danych</div>
+  </div>
 </header>
 
 <div class="disclaimer">
   <b>Zastrzeżenie:</b> narzędzie badawczo-edukacyjne. NIE jest wyrobem medycznym, nie diagnozuje i nie zastępuje
   personelu medycznego ani certyfikowanego sprzętu. Dane demo są w całości syntetyczne (matematycznie wygenerowane).
+  Tryb "NA ŻYWO" to symulacja strumienia z gotowego pliku demo (przyspieszona w czasie), NIE prawdziwa akwizycja.
 </div>
 
 <div class="controls">
   <label>scenariusz demo</label>
   <select id="inScenario"></select>
   <button id="btnAnalyze">▶ Analizuj scenariusz</button>
+  <span class="checkline"><input type="checkbox" id="inFilter"> <label for="inFilter" style="margin:0;">filtr pasmowoprzepustowy (Butterworth)</label></span>
+  <button id="btnLive" class="secondary">📡 Symuluj na żywo</button>
+  <button id="btnExportCsv" class="secondary">⬇ CSV</button>
+  <button id="btnExportJson" class="secondary">⬇ JSON</button>
   <span id="err"></span>
 </div>
 <div class="note" id="dataNote">Wybierz scenariusz i kliknij "Analizuj" — wszystkie dane tutaj są syntetyczne (demo).</div>
@@ -85,6 +102,12 @@
 </div>
 
 <div class="panel">
+  <h2>Widmo mocy (metoda Welcha)</h2>
+  <canvas id="chartSpectrum" height="140"></canvas>
+  <div class="spectrum-note" id="spectrumNote"></div>
+</div>
+
+<div class="panel">
   <h2>Wyniki analizy</h2>
   <div class="findings" id="findingsBox">—</div>
 </div>
@@ -94,6 +117,13 @@
 <script>
 'use strict';
 const COLORS = { ok:'#35d488', warn:'#f5a623', crit:'#ef4b5f', accent:'#4f9dff', violet:'#a78bfa', muted:'#8393ab', grid:'#1c2536', axis:'#8393ab' };
+
+let currentData = null;   // ostatni pełny wynik analizy (do eksportu)
+let liveSource = null;    // aktywny EventSource podczas trybu "na żywo"
+let liveBufX = [];
+let liveBufT = [];
+let liveSignalType = null;
+const LIVE_MAX_POINTS = 4000; // ogranicznik bufora wykresu przy streamingu
 
 function showError(msg){
   document.getElementById('err').textContent = msg;
@@ -188,6 +218,78 @@ function drawChart(canvas, opts){
   }
 }
 
+function drawSpectrum(canvas, spectrum){
+  if (!canvas) return;
+  const parentWidth = canvas.parentElement ? canvas.parentElement.clientWidth : 400;
+  const cssWidth = Math.max(200, parentWidth);
+  const cssHeight = 150;
+  const dpr = window.devicePixelRatio || 1;
+
+  canvas.style.width = cssWidth + 'px';
+  canvas.style.height = cssHeight + 'px';
+  canvas.width = Math.round(cssWidth * dpr);
+  canvas.height = Math.round(cssHeight * dpr);
+
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssWidth, cssHeight);
+
+  const freqs = (spectrum && spectrum.freqs) || [];
+  const power = (spectrum && spectrum.power) || [];
+  const pad = { left: 46, right: 10, top: 8, bottom: 16 };
+  const plotW = Math.max(10, cssWidth - pad.left - pad.right);
+  const plotH = Math.max(10, cssHeight - pad.top - pad.bottom);
+
+  if (freqs.length === 0){
+    ctx.fillStyle = COLORS.muted; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('brak danych (za krótki sygnał)', cssWidth / 2, cssHeight / 2);
+    return;
+  }
+
+  const fMax = freqs[freqs.length - 1] || 1;
+  const pMax = Math.max(...power, 1e-12);
+  const xAt = f => pad.left + (f / fMax) * plotW;
+  const yAt = p => pad.top + plotH - (p / pMax) * plotH;
+
+  ctx.strokeStyle = COLORS.grid; ctx.lineWidth = 1;
+  ctx.fillStyle = COLORS.axis; ctx.font = '9px monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  for (let k = 0; k <= 5; k++){
+    const f = (k / 5) * fMax;
+    const xx = xAt(f);
+    ctx.beginPath(); ctx.moveTo(xx, pad.top); ctx.lineTo(xx, pad.top + plotH); ctx.stroke();
+    ctx.fillText(fmt(f, 1) + 'Hz', xx + 2, pad.top + plotH + 2);
+  }
+
+  ctx.fillStyle = 'rgba(79,157,255,0.5)';
+  const barW = Math.max(1, plotW / freqs.length);
+  for (let i = 0; i < freqs.length; i++){
+    const xx = xAt(freqs[i]);
+    const yy = yAt(power[i]);
+    ctx.fillRect(xx, yy, Math.max(1, barW - 0.5), (pad.top + plotH) - yy);
+  }
+
+  if (spectrum.dominant_freq !== null && spectrum.dominant_freq !== undefined){
+    const dxx = xAt(spectrum.dominant_freq);
+    ctx.strokeStyle = COLORS.crit; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(dxx, pad.top); ctx.lineTo(dxx, pad.top + plotH); ctx.stroke();
+    ctx.fillStyle = COLORS.crit; ctx.textAlign = 'center'; ctx.font = 'bold 9px monospace';
+    ctx.fillText(fmt(spectrum.dominant_freq, 2) + 'Hz', dxx, pad.top - 2);
+  }
+}
+
+function renderSpectrum(data){
+  const spectrum = data.spectrum || { freqs: [], power: [], dominant_freq: null };
+  drawSpectrum(document.getElementById('chartSpectrum'), spectrum);
+  const noteEl = document.getElementById('spectrumNote');
+  if (data.signal_type === 'ecg'){
+    noteEl.textContent = data.spectrum_note || 'Dla surowego EKG dominująca częstotliwość widma jest orientacyjna - użyj bpm z odstępów RR.';
+  } else if (spectrum.dominant_freq !== null && spectrum.dominant_freq !== undefined){
+    noteEl.textContent = `Dominująca częstotliwość: ${fmt(spectrum.dominant_freq, 3)} Hz.`;
+  } else {
+    noteEl.textContent = '';
+  }
+}
+
 async function loadScenarios(){
   const res = await fetch('/api/scenarios');
   const data = await res.json();
@@ -204,10 +306,13 @@ async function loadScenarios(){
 async function analyze(){
   showError('');
   const scenario = document.getElementById('inScenario').value;
+  const useFilter = document.getElementById('inFilter').checked;
   document.getElementById('dataNote').textContent = `Analizuję scenariusz demo: ${scenario}...`;
-  const res = await fetch('/api/demo?scenario=' + encodeURIComponent(scenario));
+  const url = `/api/demo?scenario=${encodeURIComponent(scenario)}&filter=${useFilter ? 1 : 0}`;
+  const res = await fetch(url);
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  currentData = data;
   render(data);
 }
 
@@ -296,6 +401,7 @@ function render(data){
   setStatus(data);
   renderCards(data);
   renderFindings(data);
+  renderSpectrum(data);
 
   const bands = [];
   for (const key of ['irregular_window_s', 'burst_window_s', 'event_window_s', 'apnea_window_s']){
@@ -318,6 +424,119 @@ function render(data){
     height: 260, t: data.t, x: data.x, bands, markers,
   });
 }
+
+// ---------------------------------------------------------------------
+// Eksport CSV/JSON
+// ---------------------------------------------------------------------
+
+function exportCurrent(fmt){
+  if (liveSource){
+    showError('Zatrzymaj tryb "na żywo" przed eksportem.');
+    return;
+  }
+  const scenario = document.getElementById('inScenario').value;
+  const useFilter = document.getElementById('inFilter').checked;
+  const url = `/api/export/demo?scenario=${encodeURIComponent(scenario)}&format=${fmt}&filter=${useFilter ? 1 : 0}`;
+  window.location.href = url;
+}
+
+document.getElementById('btnExportCsv').addEventListener('click', () => exportCurrent('csv'));
+document.getElementById('btnExportJson').addEventListener('click', () => exportCurrent('json'));
+
+// ---------------------------------------------------------------------
+// Streaming "na żywo" (Server-Sent Events, symulacja)
+// ---------------------------------------------------------------------
+
+function renderLiveChart(){
+  const bands = [];
+  drawChart(document.getElementById('chartSignal'), {
+    height: 260, t: liveBufT, x: liveBufX, bands, markers: [],
+  });
+}
+
+function stopLive(){
+  if (liveSource){
+    liveSource.close();
+    liveSource = null;
+  }
+  document.getElementById('liveBadge').classList.remove('active');
+  document.getElementById('btnLive').textContent = '📡 Symuluj na żywo';
+  document.getElementById('btnLive').classList.remove('live-on');
+  document.getElementById('inScenario').disabled = false;
+  document.getElementById('btnAnalyze').disabled = false;
+  document.getElementById('inFilter').disabled = false;
+}
+
+function startLive(){
+  showError('');
+  const scenario = document.getElementById('inScenario').value;
+  liveBufX = [];
+  liveBufT = [];
+  liveSignalType = null;
+
+  document.getElementById('inScenario').disabled = true;
+  document.getElementById('btnAnalyze').disabled = true;
+  document.getElementById('inFilter').disabled = true;
+  document.getElementById('liveBadge').classList.add('active');
+  document.getElementById('btnLive').textContent = '⏹ Zatrzymaj';
+  document.getElementById('btnLive').classList.add('live-on');
+  document.getElementById('dataNote').textContent = `Symulacja transmisji na żywo: ${scenario}...`;
+
+  const es = new EventSource(`/api/stream?scenario=${encodeURIComponent(scenario)}`);
+  liveSource = es;
+
+  es.addEventListener('meta', (ev) => {
+    const d = JSON.parse(ev.data);
+    liveSignalType = d.signal_type;
+    document.getElementById('dataNote').textContent = `NA ŻYWO: ${d.label} (symulacja ${fmt(d.speed,0)}x realnego czasu).`;
+  });
+
+  es.addEventListener('sample', (ev) => {
+    const d = JSON.parse(ev.data);
+    liveBufT = liveBufT.concat(d.t);
+    liveBufX = liveBufX.concat(d.x);
+    if (liveBufX.length > LIVE_MAX_POINTS){
+      const cut = liveBufX.length - LIVE_MAX_POINTS;
+      liveBufX = liveBufX.slice(cut);
+      liveBufT = liveBufT.slice(cut);
+    }
+    renderLiveChart();
+  });
+
+  es.addEventListener('analysis', (ev) => {
+    const d = JSON.parse(ev.data);
+    setStatus(d);
+    renderCards(d);
+    renderFindings(d);
+    renderSpectrum(d);
+    currentData = d;
+  });
+
+  es.addEventListener('analysis_error', (ev) => {
+    const d = JSON.parse(ev.data);
+    showError('Błąd analizy okna na żywo: ' + d.error);
+  });
+
+  es.addEventListener('done', () => {
+    document.getElementById('dataNote').textContent = 'Symulacja "na żywo" zakończona (koniec danych demo).';
+    stopLive();
+  });
+
+  es.onerror = () => {
+    if (liveSource){
+      showError('Połączenie strumieniowe przerwane.');
+      stopLive();
+    }
+  };
+}
+
+document.getElementById('btnLive').addEventListener('click', () => {
+  if (liveSource){
+    stopLive();
+  } else {
+    startLive();
+  }
+});
 
 document.getElementById('btnAnalyze').addEventListener('click', () => analyze().catch(e => showError(e.message)));
 
