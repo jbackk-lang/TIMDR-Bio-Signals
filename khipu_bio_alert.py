@@ -40,9 +40,11 @@ nie przeoczenie):
     bezwymiarowe. Bez tego kroku projekcja byłaby zdominowana przez
     cechę o największej surowej skali.
 
-KHIPU_BOTTLENECK_ENABLED — wyłącznik, DOMYŚLNIE WYŁĄCZONY (False). Dopóki
-ktoś świadomie go nie włączy, api.py/dashboard zachowują się DOKŁADNIE
-tak jak przed dodaniem tego modułu.
+KHIPU_BOTTLENECK_ENABLED — wyłącznik (kill switch). Gdy `False`,
+api.py/dashboard zachowują się DOKŁADNIE tak jak przed dodaniem tego
+modułu - zero zmiany istniejącego wyniku. Testy (`test_khipu_bio_alert.py`,
+`test_api_khipu.py`) sprawdzają działanie przełącznika w OBIE strony, nie
+zakładają żadnej konkretnej wartości domyślnej wpisanej w tym pliku.
 
 KHIPU_ALERT_THRESHOLD — ustalona wartość HEURYSTYCZNA (jak w wersji
 giełdowej) - nie wyprowadzona z rozkładu danych klinicznych (bo takich
@@ -57,7 +59,7 @@ import numpy as np
 
 from bio_core import TIMDRBioSignal, _mad_z
 
-KHIPU_BOTTLENECK_ENABLED = False
+KHIPU_BOTTLENECK_ENABLED = True
 
 N_AXES = 9
 D_EMBED = 6

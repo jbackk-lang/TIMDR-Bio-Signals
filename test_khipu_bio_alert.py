@@ -13,8 +13,24 @@ from khipu_bio_alert import (
 from demo_scenarios import make_demo_data
 
 
-def test_module_disabled_by_default():
-    assert kb.KHIPU_BOTTLENECK_ENABLED is False
+def test_switch_is_boolean_and_actually_gates_api_result(monkeypatch):
+    """Nie zakładamy konkretnej wartości domyślnej (bywa świadomie
+    przełączana) - test sprawdza tylko, że przełącznik NAPRAWDĘ włącza/
+    wyłącza pola khipu_* w wyniku api.py::analyze_signal (patrz też
+    test_api_khipu.py, gdzie to samo jest sprawdzone bardziej szczegółowo)."""
+    assert isinstance(kb.KHIPU_BOTTLENECK_ENABLED, bool)
+
+    from api import analyze_signal
+    from demo_scenarios import make_demo_data
+    d = make_demo_data("ecg_normal")
+
+    monkeypatch.setattr(kb, "KHIPU_BOTTLENECK_ENABLED", False)
+    result_off = analyze_signal(d["t"], d["x"], d["fs"], d["signal_type"])
+    assert "khipu_regime_last" not in result_off
+
+    monkeypatch.setattr(kb, "KHIPU_BOTTLENECK_ENABLED", True)
+    result_on = analyze_signal(d["t"], d["x"], d["fs"], d["signal_type"])
+    assert "khipu_regime_last" in result_on
 
 
 def test_balance_correct_always_satisfies_constraint():

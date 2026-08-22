@@ -294,7 +294,7 @@ ich przed analizą rytmu grozi dokładnie tym samym artefaktem
 "wyprostowania" (rectification), który jest udokumentowany jako
 powtarzający się błąd w innych modułach TIMDR tego zestawu repo.
 
-## Alert KHIPU (`khipu_bio_alert.py`) — opcjonalny, wyłącznik `KHIPU_BOTTLENECK_ENABLED` (domyślnie WYŁĄCZONY)
+## Alert KHIPU (`khipu_bio_alert.py`) — opcjonalny, wyłącznik `KHIPU_BOTTLENECK_ENABLED` (obecnie: WŁĄCZONY)
 
 Cała reszta tego repo analizuje **jedną cechę sygnału naraz** (rytm,
 anomalie, twist, obwiednia...) - świadomy wybór projektowy (patrz wyżej).
