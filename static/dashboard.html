@@ -97,6 +97,7 @@
     <span><i class="dot" style="background:#4f9dff"></i>sygnał</span>
     <span><i class="dot" style="background:#ef4b5f"></i>anomalie / szczyty</span>
     <span><i class="dot" style="background:#f5a623"></i>epizod (jeśli wstrzyknięty w demo)</span>
+    <span><i class="dot" style="background:#a78bfa"></i>alert KHIPU (zbiorcza zmiana stanu)</span>
   </div>
   <canvas id="chartSignal" height="240"></canvas>
 </div>
@@ -110,6 +111,11 @@
 <div class="panel">
   <h2>Wyniki analizy</h2>
   <div class="findings" id="findingsBox">—</div>
+</div>
+
+<div class="panel">
+  <h2>Alert KHIPU — zbiorcza zmiana stanu sygnału (opcjonalny, eksperymentalny)</h2>
+  <div id="khipuBox" style="font-size:12px; line-height:1.7;">—</div>
 </div>
 
 <footer>TIMDR-Bio-Signals · lokalne API (Flask, 127.0.0.1:5050) · wykresy Canvas 2D, bez CDN</footer>
@@ -396,12 +402,33 @@ function renderFindings(data){
   box.innerHTML = lines.join('');
 }
 
+function renderKhipu(data){
+  const box = document.getElementById('khipuBox');
+  if (data.khipu_regime_last === undefined || data.khipu_regime_last === null){
+    box.innerHTML = '<span style="color:var(--muted)">Moduł KHIPU wyłączony (KHIPU_BOTTLENECK_ENABLED=False w khipu_bio_alert.py) - brak sygnału.</span>';
+    return;
+  }
+  const lines = [];
+  if (data.khipu_regime_validated === false){
+    lines.push(`<div class="warn-row">⚠ Ten typ sygnału (${data.signal_type}) NIE był częścią zbioru, na którym walidacja dała dobry wynik (patrz README) - traktuj poniższe jako dużo mniej pewne niż dla EKG/EEG.</div>`);
+  }
+  lines.push(`<div>Zgodność stanu — ostatnie okno: <b>${fmt(data.khipu_regime_last,3)}</b> · średnia: ${fmt(data.khipu_regime_mean,3)} <span style="color:var(--muted)">(skala [-1,1]: +1 = ten sam zbiorczy stan co poprzednie okno, -1 = maksymalnie odmienny)</span></div>`);
+  if (data.khipu_regime_alert_active){
+    lines.push(`<div class="warn-row">⚠ Ostatnie okno JEST w stanie alertu.</div>`);
+  }
+  lines.push(`<div>Alerty w tym nagraniu: <b>${data.n_khipu_regime_alerts||0}</b></div>`);
+  (data.khipu_regime_alerts||[]).slice(0,10).forEach(m => lines.push(`<div class="warn-row">⚠ ${m}</div>`));
+  lines.push(`<div style="color:var(--muted); margin-top:4px;">Dodatkowy, komplementarny sygnał - łączy kilka już policzonych cech naraz (rytm, anomalie, twist, trend) w jeden dyskretny odcisk stanu. NIE zastępuje ani nie unieważnia żadnego z wyników powyżej, NIE jest diagnozą - patrz README.</div>`);
+  box.innerHTML = lines.join('');
+}
+
 function render(data){
   document.getElementById('dataNote').textContent = `${data.label} — dane syntetyczne (demo).`;
   setStatus(data);
   renderCards(data);
   renderFindings(data);
   renderSpectrum(data);
+  renderKhipu(data);
 
   const bands = [];
   for (const key of ['irregular_window_s', 'burst_window_s', 'event_window_s', 'apnea_window_s']){
@@ -418,6 +445,9 @@ function render(data){
   } else {
     if (data.anomalies_idx) markers.push({ indices: data.anomalies_idx, color: COLORS.crit, radius: 2.5 });
     if (data.twist_idx) markers.push({ indices: data.twist_idx, color: COLORS.violet, radius: 2.5 });
+  }
+  if (data.khipu_regime_alerts_idx && data.khipu_regime_alerts_idx.length){
+    markers.push({ indices: data.khipu_regime_alerts_idx, color: COLORS.violet, radius: 5 });
   }
 
   drawChart(document.getElementById('chartSignal'), {
@@ -509,6 +539,7 @@ function startLive(){
     renderCards(d);
     renderFindings(d);
     renderSpectrum(d);
+    renderKhipu(d);
     currentData = d;
   });
 
