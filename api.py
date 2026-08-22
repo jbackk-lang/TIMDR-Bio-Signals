@@ -166,6 +166,35 @@ def analyze_signal(t, x, fs, signal_type: str, apply_filter: bool = False) -> di
             "spectrum": power_spectrum(x_analysis, fs),
         })
 
+    # OPCJONALNY, DODATKOWY alert "zbiorcza zmiana stanu sygnału" (patrz
+    # khipu_bio_alert.py) - łączy WSZYSTKIE cechy okna (rytm, anomalie,
+    # twist, trend...) w jeden dyskretny odcisk stanu i porównuje sąsiednie
+    # okna czasu. Domyślnie WYŁĄCZONY (KHIPU_BOTTLENECK_ENABLED=False w
+    # khipu_bio_alert.py) - dopóki ktoś świadomie nie włączy tej flagi,
+    # wynik jest identyczny jak przed dodaniem tego modułu. Liczony na
+    # SUROWYM `x` (nie x_analysis) niezależnie od apply_filter, żeby wynik
+    # zawsze odpowiadał parametrom zwalidowanym w README. Failuje cicho -
+    # to dodatkowy sygnał, awaria tutaj nie ma prawa wywrócić reszty analizy.
+    try:
+        from khipu_bio_alert import (
+            KHIPU_BOTTLENECK_ENABLED, KHIPU_VALIDATED_TYPES, KHIPU_ALERT_THRESHOLD,
+            regime_score_series, regime_alerts,
+        )
+        if KHIPU_BOTTLENECK_ENABLED:
+            khipu_result = regime_score_series(x, t, fs, signal_type)
+            khipu_scores = khipu_result["scores"]
+            if len(khipu_scores):
+                alerts = regime_alerts(khipu_scores, khipu_result["window_end_idx"], t)
+                result["khipu_regime_last"] = round(float(khipu_scores[-1]), 3)
+                result["khipu_regime_mean"] = round(float(np.mean(khipu_scores)), 3)
+                result["khipu_regime_alerts"] = [a["message"] for a in alerts]
+                result["khipu_regime_alerts_idx"] = [a["index"] for a in alerts]
+                result["n_khipu_regime_alerts"] = len(alerts)
+                result["khipu_regime_alert_active"] = bool(khipu_scores[-1] <= KHIPU_ALERT_THRESHOLD)
+                result["khipu_regime_validated"] = signal_type in KHIPU_VALIDATED_TYPES
+    except Exception:
+        pass
+
     return result
 
 

@@ -74,7 +74,9 @@ otworzy dashboard pod `http://127.0.0.1:5050`.
 python -m pytest -q
 ```
 
-50/50 testów przechodzi (`test_bio_core.py` + `test_demo_scenarios.py` + `test_dsp.py`).
+71/71 testów przechodzi (`test_bio_core.py` + `test_demo_scenarios.py` +
+`test_dsp.py` + `test_khipu_bio_alert.py` + `test_api_khipu.py` - dwa
+ostatnie dotyczą opcjonalnego alertu KHIPU, patrz sekcja niżej).
 
 ## Nowe funkcje DSP (`dsp.py`)
 
@@ -291,3 +293,68 @@ fizjologiczne mają różne częstotliwości charakterystyczne, a łączenie
 ich przed analizą rytmu grozi dokładnie tym samym artefaktem
 "wyprostowania" (rectification), który jest udokumentowany jako
 powtarzający się błąd w innych modułach TIMDR tego zestawu repo.
+
+## Alert KHIPU (`khipu_bio_alert.py`) — opcjonalny, wyłącznik `KHIPU_BOTTLENECK_ENABLED` (obecnie: WŁĄCZONY)
+
+Cała reszta tego repo analizuje **jedną cechę sygnału naraz** (rytm,
+anomalie, twist, obwiednia...) - świadomy wybór projektowy (patrz wyżej).
+`khipu_bio_alert.py` robi coś węższego i dodatkowego: bierze KILKA już
+policzonych cech okna naraz, ściska je w jeden DYSKRETNY "odcisk stanu"
+(`State9Bottleneck` z [jbackk-lang/KHIPU-NEURAL](../KHIPU-NEURAL), wierny
+port matematyki - ten sam mechanizm co w `analizator-gieldowy-v3`) i
+porównuje odcisk sąsiednich okien czasu. Spadek zgodności = kilka cech
+zmieniło się jednocześnie - potencjalnie widoczne wcześniej/wyraźniej niż
+w którymkolwiek pojedynczym detektorze osobno. **To jest DODATKOWY,
+KOMPLEMENTARNY alert - nie zastępuje, nie podnosi ani nie obniża
+wiarygodności żadnego z istniejących wyników.**
+
+Różnica względem `analizator-gieldowy-v3/khipu_bottleneck.py`: **brak
+`calibrate()`/treningu.** Tam kalibracja miała jawnie-heurystyczną
+etykietę "ta sama faza" ze znaku FLOW. Tu nie ma analogicznie
+uzasadnionej etykiety "ten sam stan fizjologiczny" - wymyślanie jednej
+tylko po to, by było czym trenować, byłoby mniej uczciwe niż jej brak.
+Projekcja jest więc wyłącznie deterministycznym, NIEtrenowanym "twardym
+filtrem" (ten sam wzorzec Walsha-Hadamarda co w wersji giełdowej). Cechy
+wejściowe są z-score'owane (MAD-z, ten sam `_mad_z` co reszta
+`bio_core.py`) kolumna po kolumnie, po wszystkich oknach danego
+nagrania, zanim trafią do projekcji - bo mają bardzo różne surowe skale
+(bpm rzędu dziesiątek, cv rzędu 0.01-0.3, moc rytmu w [-1,1]...).
+
+### Walidacja na `demo_scenarios.py` — wynik NIEJEDNOLITY, przeczytaj przed włączeniem
+
+Sprawdzone empirycznie na wszystkich 8 syntetycznych scenariuszach demo:
+alerty na scenariuszu `*_normal` (fałszywe alarmy - ma ich NIE być) oraz
+trafienie alertu w okolicy (±5s) znanego, wstrzykniętego epizodu w
+scenariuszu nieprawidłowym.
+
+| Sygnał | okno/krok | fałszywe alarmy (`*_normal`) | alerty na scenariuszu z epizodem | trafienie w oknie epizodu |
+|---|---|---|---|---|
+| EKG | 10s / 2.5s | 0 | 2 | 2/2 |
+| EEG | 5s / 2.5s | 2 | 3 | 2/3 |
+| oddech | 30s / 7.5s | 1 | 4 | 1/4 |
+| puls | 120s / 15s | 3 | 1 | 1/1 |
+
+**Wniosek: EKG i EEG dają rozsądny wynik (zero/mało fałszywych alarmów,
+trafienie w epizod) - oddech i puls NIE (zbyt mało okien w typowym
+nagraniu na stabilny z-score kolumn, dyskryminacja słaba).**
+`KHIPU_VALIDATED_TYPES = {"ecg", "eeg"}` w `khipu_bio_alert.py` koduje
+dokładnie tę granicę - wynik API/dashboardu ma pole
+`khipu_regime_validated` (`False` dla oddechu/pulsu), żeby to ograniczenie
+było widoczne w interfejsie, nie tylko w kodzie źródłowym. Progi
+okna/kroku są USTALONE RĘCZNIE na podstawie tej jednej, w pełni
+syntetycznej walidacji - nie skalibrowane na żadnych realnych danych,
+punkt startowy do dalszego dostrojenia, nie potwierdzona liczba.
+
+Co robi, gdy włączony (`KHIPU_BOTTLENECK_ENABLED = True`): `api.py`
+dopisuje do wyniku `/api/demo` i `/api/analyze` (nie do `/api/stream` -
+nie jest jeszcze wpięty w tryb "na żywo") pola `khipu_regime_last`,
+`khipu_regime_mean`, `khipu_regime_alerts` (komunikaty),
+`khipu_regime_alerts_idx` (indeksy próbek - naniesione na wykres
+fioletowymi znacznikami w dashboardzie), `n_khipu_regime_alerts`,
+`khipu_regime_alert_active`, `khipu_regime_validated`. Domyślnie
+(`False`) wynik jest identyczny jak przed dodaniem tego modułu.
+
+Testy: 18 w `test_khipu_bio_alert.py` (moduł: kształt/determinizm/próg/
+wyłącznik) + 3 w `test_api_khipu.py` (integracja z `api.py`, wyłącznik w
+obie strony, `khipu_regime_validated`) - patrz sekcja "Testy" na górze
+pliku dla łącznej liczby testów całego repo.
