@@ -1,0 +1,4 @@
+flask
+numpy
+scipy
+pytest
