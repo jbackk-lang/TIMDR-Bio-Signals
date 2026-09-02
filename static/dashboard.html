@@ -364,6 +364,15 @@ function renderFindings(data){
   const box = document.getElementById('findingsBox');
   const lines = [];
 
+  if (data.trigger){
+    const trig = data.trigger;
+    if (trig.triggered){
+      lines.push(`<div class="crit-row">🎯 <b>${trig.type}</b> (próbka ${trig.location}) — ${trig.message}</div>`);
+    } else {
+      lines.push(`<div class="ok-row">✓ Brak wykrytego zdarzenia sygnałowego (podsumowanie BioTrigger).</div>`);
+    }
+  }
+
   if (data.signal_type === 'ecg'){
     lines.push(`<div>Wykryto <b>${data.n_peaks}</b> uderzeń, średnie RR = ${fmt(data.mean_rr_s,3)}s (~${fmt(data.bpm,0)} bpm).</div>`);
     if (data.arrhythmia_suspected){
