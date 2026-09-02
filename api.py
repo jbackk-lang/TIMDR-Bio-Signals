@@ -27,6 +27,7 @@ import numpy as np
 from flask import Flask, Response, jsonify, request, send_from_directory, stream_with_context
 
 from bio_core import TIMDRBioSignal
+from bio_trigger import BioTrigger
 from demo_scenarios import SCENARIOS, make_demo_data
 from dsp import CausalBandpassFilter, butter_bandpass_filter, pan_tompkins_qrs, power_spectrum
 
@@ -192,6 +193,19 @@ def analyze_signal(t, x, fs, signal_type: str, apply_filter: bool = False) -> di
                 result["n_khipu_regime_alerts"] = len(alerts)
                 result["khipu_regime_alert_active"] = bool(khipu_scores[-1] <= KHIPU_ALERT_THRESHOLD)
                 result["khipu_regime_validated"] = signal_type in KHIPU_VALIDATED_TYPES
+    except Exception:
+        pass
+
+    # PODSUMOWANIE: BioTrigger (bio_trigger.py) - jeden, priorytetyzowany
+    # wynik "co jest najważniejsze i gdzie" nad WSZYSTKIMI powyższymi,
+    # równoległymi polami (anomalies_idx/twist_idx/envelope_drop_ranges/
+    # beat_amplitude_anomalies/arrhythmia_suspected). Nie zastępuje żadnego
+    # z nich - dashboard może dalej pokazywać wszystkie osobno; to
+    # dodatkowe, zwięzłe pole na wierzchu. Failuje cicho jak KHIPU wyżej -
+    # to dodatkowe podsumowanie, awaria tutaj nie ma prawa wywrócić reszty.
+    try:
+        trig = BioTrigger().analyze(result)
+        result["trigger"] = trig.as_dict()
     except Exception:
         pass
 

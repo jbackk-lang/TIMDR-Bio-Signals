@@ -50,6 +50,19 @@ otworzy dashboard pod `http://127.0.0.1:5050`.
   streamingu), karty z wynikami, wykres sygnału, wykres widma mocy.
 - `test_bio_core.py`, `test_demo_scenarios.py`, `test_dsp.py` — 50
   testów (pytest).
+- `bio_trigger.py` — **czujnik sygnałowy** (NIE model, NIE rozpoznanie
+  kliniczne): `BioTrigger`, dispatcher nad wynikiem `analyze_signal()` —
+  jeden, priorytetyzowany wynik "co jest najważniejsze i gdzie" nad
+  wszystkimi równoległymi polami (anomalie/twist/spadek obwiedni/
+  arytmia/anomalia amplitudy uderzenia), zamiast osobnych list bez
+  wspólnej hierarchii. Priorytet: `ENVELOPE_DROP` (utrata zmienności —
+  bezdech/asystolia/cisza EEG) > `ARRHYTHMIA` (tylko EKG) >
+  `BEAT_ANOMALY` (tylko EKG) > `TWIST` > `ANOMALY` > `NONE`. Wpięty do
+  `api.py::analyze_signal()` (pole `"trigger"` w każdej odpowiedzi -
+  `/api/analyze`, `/api/demo`, eksport, streaming). Testy:
+  `test_bio_trigger.py` (logika dispatchera) + `test_bio_trigger_api.py`
+  (wpięcie, m.in. `resp_apnea` → `envelope_drop`, `ecg_arrhythmia` →
+  `arrhythmia`, `ecg_normal` → `none`) — 84/84 testów łącznie.
 - `candidate_user.py` — kod klasy `TIMDRBio` nadesłany do wglądu w
   trakcie budowy tego repo, zachowany wyłącznie do testów
   porównawczych (patrz "Kod nadesłany do wglądu" niżej). **Nie jest
@@ -74,9 +87,11 @@ otworzy dashboard pod `http://127.0.0.1:5050`.
 python -m pytest -q
 ```
 
-71/71 testów przechodzi (`test_bio_core.py` + `test_demo_scenarios.py` +
+84/84 testów przechodzi (`test_bio_core.py` + `test_demo_scenarios.py` +
 `test_dsp.py` + `test_khipu_bio_alert.py` + `test_api_khipu.py` - dwa
-ostatnie dotyczą opcjonalnego alertu KHIPU, patrz sekcja niżej).
+ostatnie dotyczą opcjonalnego alertu KHIPU, patrz sekcja niżej - +
+`test_bio_trigger.py` + `test_bio_trigger_api.py`, patrz "Struktura"
+wyżej).
 
 ## Nowe funkcje DSP (`dsp.py`)
 
