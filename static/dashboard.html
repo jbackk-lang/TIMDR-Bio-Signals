@@ -414,7 +414,9 @@ function renderFindings(data){
 function renderKhipu(data){
   const box = document.getElementById('khipuBox');
   if (data.khipu_regime_last === undefined || data.khipu_regime_last === null){
-    box.innerHTML = '<span style="color:var(--muted)">Moduł KHIPU wyłączony (KHIPU_BOTTLENECK_ENABLED=False w khipu_bio_alert.py) - brak sygnału.</span>';
+    box.innerHTML = liveSource
+      ? '<span style="color:var(--muted)">Moduł KHIPU niedostępny w trybie na żywo (niezwalidowany na krótkich, narastających oknach streamu - patrz README) - brak sygnału.</span>'
+      : '<span style="color:var(--muted)">Moduł KHIPU wyłączony (KHIPU_BOTTLENECK_ENABLED=False w khipu_bio_alert.py) - brak sygnału.</span>';
     return;
   }
   const lines = [];
