@@ -41,3 +41,20 @@ def test_khipu_regime_validated_false_for_unvalidated_type(monkeypatch):
     result = analyze_signal(d["t"], d["x"], d["fs"], d["signal_type"])
     assert "khipu_regime_validated" in result
     assert result["khipu_regime_validated"] is False  # resp NIE jest w KHIPU_VALIDATED_TYPES
+
+
+def test_khipu_excluded_when_include_khipu_false_even_if_globally_enabled(monkeypatch):
+    """`/api/stream` (api.py) wywołuje analyze_signal(..., include_khipu=False)
+    - moduł KHIPU nie jest zwalidowany na krótkich, narastających oknach
+    trybu na żywo (patrz README, sekcja KHIPU). To musi działać niezależnie
+    od globalnego przełącznika KHIPU_BOTTLENECK_ENABLED, żeby /api/stream
+    nigdy nie wystawiał pól khipu_* - dokładnie to sprawdza ten test."""
+    monkeypatch.setattr(khipu_bio_alert, "KHIPU_BOTTLENECK_ENABLED", True)
+    d = make_demo_data("ecg_normal")
+    result = analyze_signal(d["t"], d["x"], d["fs"], d["signal_type"], include_khipu=False)
+    for key in (
+        "khipu_regime_last", "khipu_regime_mean", "khipu_regime_alerts",
+        "khipu_regime_alerts_idx", "n_khipu_regime_alerts",
+        "khipu_regime_alert_active", "khipu_regime_validated",
+    ):
+        assert key not in result

@@ -62,7 +62,7 @@ otworzy dashboard pod `http://127.0.0.1:5050`.
   `/api/analyze`, `/api/demo`, eksport, streaming). Testy:
   `test_bio_trigger.py` (logika dispatchera) + `test_bio_trigger_api.py`
   (wpięcie, m.in. `resp_apnea` → `envelope_drop`, `ecg_arrhythmia` →
-  `arrhythmia`, `ecg_normal` → `none`) — 84/84 testów łącznie.
+  `arrhythmia`, `ecg_normal` → `none`) — 85/85 testów łącznie.
 - `candidate_user.py` — kod klasy `TIMDRBio` nadesłany do wglądu w
   trakcie budowy tego repo, zachowany wyłącznie do testów
   porównawczych (patrz "Kod nadesłany do wglądu" niżej). **Nie jest
@@ -87,7 +87,7 @@ otworzy dashboard pod `http://127.0.0.1:5050`.
 python -m pytest -q
 ```
 
-84/84 testów przechodzi (`test_bio_core.py` + `test_demo_scenarios.py` +
+85/85 testów przechodzi (`test_bio_core.py` + `test_demo_scenarios.py` +
 `test_dsp.py` + `test_khipu_bio_alert.py` + `test_api_khipu.py` - dwa
 ostatnie dotyczą opcjonalnego alertu KHIPU, patrz sekcja niżej - +
 `test_bio_trigger.py` + `test_bio_trigger_api.py`, patrz "Struktura"
@@ -361,15 +361,26 @@ syntetycznej walidacji - nie skalibrowane na żadnych realnych danych,
 punkt startowy do dalszego dostrojenia, nie potwierdzona liczba.
 
 Co robi, gdy włączony (`KHIPU_BOTTLENECK_ENABLED = True`): `api.py`
-dopisuje do wyniku `/api/demo` i `/api/analyze` (nie do `/api/stream` -
-nie jest jeszcze wpięty w tryb "na żywo") pola `khipu_regime_last`,
+dopisuje do wyniku `/api/demo` i `/api/analyze` pola `khipu_regime_last`,
 `khipu_regime_mean`, `khipu_regime_alerts` (komunikaty),
 `khipu_regime_alerts_idx` (indeksy próbek - naniesione na wykres
 fioletowymi znacznikami w dashboardzie), `n_khipu_regime_alerts`,
 `khipu_regime_alert_active`, `khipu_regime_validated`. Domyślnie
 (`False`) wynik jest identyczny jak przed dodaniem tego modułu.
 
+**Wyłączony na `/api/stream`, niezależnie od `KHIPU_BOTTLENECK_ENABLED`.**
+`analyze_signal()` przyjmuje parametr `include_khipu` (domyślnie `True`);
+`/api/stream` woła go zawsze z `include_khipu=False`, więc dashboard w
+trybie "na żywo" nigdy nie pokazuje tego alertu. Powód: walidacja w
+tabeli wyżej była robiona WYŁĄCZNIE na pełnych, gotowych nagraniach
+demo, nie na krótkich, narastających oknach strumienia - a dla niektórych
+typów sygnału (np. puls: okno 120s) bufor streamingu bywa krótszy niż
+jedno okno KHIPU, więc na starcie transmisji `regime_score_series`
+dostałoby za mało danych na sensowny wynik. Zweryfikowane w
+`test_khipu_excluded_when_include_khipu_false_even_if_globally_enabled`
+(`test_api_khipu.py`) - działa nawet gdy globalny przełącznik jest `True`.
+
 Testy: 18 w `test_khipu_bio_alert.py` (moduł: kształt/determinizm/próg/
-wyłącznik) + 3 w `test_api_khipu.py` (integracja z `api.py`, wyłącznik w
+wyłącznik) + 4 w `test_api_khipu.py` (integracja z `api.py`, wyłącznik w
 obie strony, `khipu_regime_validated`) - patrz sekcja "Testy" na górze
 pliku dla łącznej liczby testów całego repo.

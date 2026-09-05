@@ -81,7 +81,7 @@ def _clean(obj):
     return obj
 
 
-def analyze_signal(t, x, fs, signal_type: str, apply_filter: bool = False) -> dict:
+def analyze_signal(t, x, fs, signal_type: str, apply_filter: bool = False, include_khipu: bool = True) -> dict:
     t = np.asarray(t, dtype=float)
     x = np.asarray(x, dtype=float)
     result = {"signal_type": signal_type, "fs": fs, "n": len(x)}
@@ -176,25 +176,34 @@ def analyze_signal(t, x, fs, signal_type: str, apply_filter: bool = False) -> di
     # SUROWYM `x` (nie x_analysis) niezależnie od apply_filter, żeby wynik
     # zawsze odpowiadał parametrom zwalidowanym w README. Failuje cicho -
     # to dodatkowy sygnał, awaria tutaj nie ma prawa wywrócić reszty analizy.
-    try:
-        from khipu_bio_alert import (
-            KHIPU_BOTTLENECK_ENABLED, KHIPU_VALIDATED_TYPES, KHIPU_ALERT_THRESHOLD,
-            regime_score_series, regime_alerts,
-        )
-        if KHIPU_BOTTLENECK_ENABLED:
-            khipu_result = regime_score_series(x, t, fs, signal_type)
-            khipu_scores = khipu_result["scores"]
-            if len(khipu_scores):
-                alerts = regime_alerts(khipu_scores, khipu_result["window_end_idx"], t)
-                result["khipu_regime_last"] = round(float(khipu_scores[-1]), 3)
-                result["khipu_regime_mean"] = round(float(np.mean(khipu_scores)), 3)
-                result["khipu_regime_alerts"] = [a["message"] for a in alerts]
-                result["khipu_regime_alerts_idx"] = [a["index"] for a in alerts]
-                result["n_khipu_regime_alerts"] = len(alerts)
-                result["khipu_regime_alert_active"] = bool(khipu_scores[-1] <= KHIPU_ALERT_THRESHOLD)
-                result["khipu_regime_validated"] = signal_type in KHIPU_VALIDATED_TYPES
-    except Exception:
-        pass
+    #
+    # `include_khipu=False` (używane przez /api/stream, patrz niżej) wyłącza
+    # TEN blok niezależnie od KHIPU_BOTTLENECK_ENABLED - walidacja tego modułu
+    # (patrz README, sekcja KHIPU) była robiona WYŁĄCZNIE na pełnych,
+    # gotowych nagraniach demo, nie na krótkich, narastających oknach
+    # strumienia na żywo; okna niektórych typów (np. puls: 120s) są też
+    # dłuższe niż domyślny bufor streamingu tego typu, więc regime_score_series
+    # dostałoby na starcie streamu za mało danych na sensowny wynik.
+    if include_khipu:
+        try:
+            from khipu_bio_alert import (
+                KHIPU_BOTTLENECK_ENABLED, KHIPU_VALIDATED_TYPES, KHIPU_ALERT_THRESHOLD,
+                regime_score_series, regime_alerts,
+            )
+            if KHIPU_BOTTLENECK_ENABLED:
+                khipu_result = regime_score_series(x, t, fs, signal_type)
+                khipu_scores = khipu_result["scores"]
+                if len(khipu_scores):
+                    alerts = regime_alerts(khipu_scores, khipu_result["window_end_idx"], t)
+                    result["khipu_regime_last"] = round(float(khipu_scores[-1]), 3)
+                    result["khipu_regime_mean"] = round(float(np.mean(khipu_scores)), 3)
+                    result["khipu_regime_alerts"] = [a["message"] for a in alerts]
+                    result["khipu_regime_alerts_idx"] = [a["index"] for a in alerts]
+                    result["n_khipu_regime_alerts"] = len(alerts)
+                    result["khipu_regime_alert_active"] = bool(khipu_scores[-1] <= KHIPU_ALERT_THRESHOLD)
+                    result["khipu_regime_validated"] = signal_type in KHIPU_VALIDATED_TYPES
+        except Exception:
+            pass
 
     # PODSUMOWANIE: BioTrigger (bio_trigger.py) - jeden, priorytetyzowany
     # wynik "co jest najważniejsze i gdzie" nad WSZYSTKIMI powyższymi,
@@ -502,7 +511,10 @@ def stream():
                 x_buf = x_full[buf_start:sent]
                 if len(x_buf) >= 10:
                     try:
-                        analysis = analyze_signal(t_buf, x_buf, fs, sig_type)
+                        # include_khipu=False: patrz komentarz przy bloku KHIPU
+                        # w analyze_signal() - moduł nie jest zwalidowany na
+                        # krótkich, narastających oknach trybu na żywo.
+                        analysis = analyze_signal(t_buf, x_buf, fs, sig_type, include_khipu=False)
                         analysis["window_start_s"] = float(t_buf[0])
                         analysis["window_end_s"] = float(t_buf[-1])
                         yield _sse_event("analysis", analysis)
