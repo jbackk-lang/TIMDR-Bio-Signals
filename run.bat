@@ -1,5 +1,6 @@
 @echo off
 setlocal enabledelayedexpansion
+cd /d "%~dp0"
 echo ============================================================
 echo  TIMDR-Bio-Signals - lokalne API + dashboard
 echo  UWAGA: to NIE jest wyrob medyczny. Narzedzie badawczo-
@@ -62,7 +63,9 @@ if errorlevel 1 (
 
 echo.
 echo Uruchamiam testy (pytest)...
-%PYCMD% -m pytest -q
+rem --- basetemp we wlasnym folderze projektu omija zablokowany/uszkodzony
+rem     C:\Users\<user>\AppData\Local\Temp\pytest-of-<user> na Windows ---
+%PYCMD% -m pytest -q --basetemp=".pytest_tmp"
 if errorlevel 1 (
     echo.
     echo UWAGA: co najmniej jeden test nie przeszedl. Serwer uruchomi
