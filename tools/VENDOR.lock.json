@@ -1,0 +1,10 @@
+{
+  "claim_audit.py": {
+    "source": "TIMDR-AI-Core/claim_audit.py",
+    "commit": "8647528",
+    "version": "0.2",
+    "sha256": "6d1822b4c42f0e8c41ec0808e5350dfc6239a5fd53104b0713ace852eb314a42",
+    "note": "Kopia wendorowana - zmiany tylko w TIMDR-AI-Core, potem ponowne skopiowanie i aktualizacja hasha. Commit 8647528 to ten sam plik co lokalny 36d5043 (zmieniony hash po rebase przy pushu; CLAIM_AUDIT_ADDENDUM_1.md podaje stary).",
+    "sha256_of": "zawartosc pliku w gicie (konce linii LF); kopia robocza w TIMDR-AI-Core na Windows moze miec CRLF i inny hash"
+  }
+}
