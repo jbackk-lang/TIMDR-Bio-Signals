@@ -1,0 +1,4 @@
+# Jednolite konce linii na Windows i Linux (Git sam zamienia CRLF/LF)
+* text=auto
+*.bat text eol=crlf
+*.ps1 text eol=crlf
