@@ -1,0 +1,168 @@
+{
+  "tests": {
+    "per_file": {
+      "test_api_khipu.py": 4,
+      "test_bio_core.py": 19,
+      "test_bio_trigger.py": 9,
+      "test_bio_trigger_api.py": 4,
+      "test_demo_scenarios.py": 14,
+      "test_dsp.py": 17,
+      "test_khipu_bio_alert.py": 18
+    },
+    "total": 85,
+    "tail": [
+      "85 passed in 4.62s"
+    ],
+    "returncode": 0
+  },
+  "synthetic": {
+    "data_files": [],
+    "rng_in_demo": true
+  },
+  "causal_filter": {
+    "max_diff_chunked": 0.0,
+    "boundary_diff_stateless": 1.204067826730416
+  },
+  "pan_tompkins": {
+    "detect_peaks_clean": 70,
+    "pt_clean": 70,
+    "detect_peaks_wander": 18,
+    "pt_wander": 70
+  },
+  "welch": {
+    "eeg_dominant": 10.0,
+    "resp_dominant": 0.25333333333333335,
+    "ecg_fs": 250,
+    "ecg_n": 15000,
+    "res_256_hz": 0.9765625,
+    "ecg_dominant_256": 1.953125,
+    "ecg_dominant_now": 2.3193359375,
+    "ecg_true_freq_rr": 1.1683034202505926,
+    "bpm": 70.09820521503555
+  },
+  "bug1": {
+    "buggy_threshold": 0.019595633064257673,
+    "fixed_threshold": 0.6579851674331061,
+    "x6": -0.010739064707205703,
+    "x6_above_buggy": false,
+    "x6_local_max": false,
+    "peak_fraction": 0.05,
+    "detect_peaks_now": 25
+  },
+  "bug2": {
+    "candidate_test_copy": {
+      "n_periods": 60,
+      "power": 0.6844332081879091
+    },
+    "candidate_user_py": {
+      "n_periods": 60,
+      "power": 0.6844332081879091
+    },
+    "own": {
+      "n_periods": 0,
+      "power": 0.0
+    }
+  },
+  "twist": {
+    "pct_with_t": 0.06999999999999999,
+    "pct_without_t": 0.02
+  },
+  "trend": {
+    "files_with_number": [
+      "README.md",
+      "docs/audit/claims_bio.py",
+      "docs/audit/recompute_bio.py"
+    ]
+  },
+  "envelope": {
+    "max_abs_madz": 1.211388632323027,
+    "ranges_s": [
+      [
+        141.6,
+        178.0
+      ]
+    ],
+    "normal_ranges": 0
+  },
+  "raw_ecg_anomalies_pct": 7.793333333333333,
+  "khipu": {
+    "enabled": true,
+    "validated": [
+      "ecg",
+      "eeg"
+    ],
+    "n_scenarios": 8,
+    "table": {
+      "ecg": {
+        "window_s": 10.0,
+        "step_s": 2.5,
+        "false_alarms": 0,
+        "alerts": 2,
+        "hits": 2,
+        "alert_times": [
+          37.496,
+          39.996
+        ],
+        "episode": [
+          20.0,
+          40.0
+        ]
+      },
+      "eeg": {
+        "window_s": 5.0,
+        "step_s": 2.5,
+        "false_alarms": 2,
+        "alerts": 3,
+        "hits": 2,
+        "alert_times": [
+          12.4921875,
+          22.4921875,
+          29.9921875
+        ],
+        "episode": [
+          13.5,
+          17.5
+        ]
+      },
+      "resp": {
+        "window_s": 30.0,
+        "step_s": 7.5,
+        "false_alarms": 1,
+        "alerts": 4,
+        "hits": 1,
+        "alert_times": [
+          37.4,
+          174.2,
+          212.2,
+          257.8
+        ],
+        "episode": [
+          150.0,
+          170.0
+        ]
+      },
+      "pulse": {
+        "window_s": 120.0,
+        "step_s": 15.0,
+        "false_alarms": 3,
+        "alerts": 1,
+        "hits": 1,
+        "alert_times": [
+          246.0
+        ],
+        "episode": [
+          240.0,
+          360.0
+        ]
+      }
+    },
+    "ecg_cv_range": [
+      0.002515256799221009,
+      0.45853492129728995
+    ],
+    "generic_power_range": [
+      0.0,
+      0.9951592279367814
+    ]
+  }
+}
