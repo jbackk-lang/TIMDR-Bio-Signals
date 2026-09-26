@@ -11,7 +11,7 @@
     },
     "total": 85,
     "tail": [
-      "85 passed in 4.62s"
+      "85 passed in 4.94s"
     ],
     "returncode": 0
   },
@@ -38,7 +38,13 @@
     "ecg_dominant_256": 1.953125,
     "ecg_dominant_now": 2.3193359375,
     "ecg_true_freq_rr": 1.1683034202505926,
-    "bpm": 70.09820521503555
+    "bpm": 70.09820521503555,
+    "ecg_dominant_by_nperseg": {
+      "256": 1.953125,
+      "512": 2.44140625,
+      "1024": 1.220703125,
+      "2048": 2.3193359375
+    }
   },
   "bug1": {
     "buggy_threshold": 0.019595633064257673,
@@ -47,7 +53,8 @@
     "x6_above_buggy": false,
     "x6_local_max": false,
     "peak_fraction": 0.05,
-    "detect_peaks_now": 25
+    "detect_peaks_now": 25,
+    "noise_local_max_above_old": 42
   },
   "bug2": {
     "candidate_test_copy": {
@@ -69,9 +76,7 @@
   },
   "trend": {
     "files_with_number": [
-      "README.md",
-      "docs/audit/claims_bio.py",
-      "docs/audit/recompute_bio.py"
+      "README.md"
     ]
   },
   "envelope": {

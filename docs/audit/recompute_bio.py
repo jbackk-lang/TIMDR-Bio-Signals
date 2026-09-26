@@ -1,5 +1,6 @@
 """Przeliczenia dla audytu twierdzeń README (TIMDR-Bio-Signals). Reguły: docs/audit/CLAIM_AUDIT_PREREG.md.
 Użycie (katalog repo): python docs/audit/recompute_bio.py  ->  docs/audit/RECOMPUTE_BIO.json
+v1.1 (aneks 1): dodane bug1.noise_local_max_above_old i welch.ecg_dominant_by_nperseg; trend szuka liczb poza docs/audit.
 """
 from __future__ import annotations
 
@@ -75,6 +76,9 @@ def main():
                     "ecg_dominant_256": float(f256[1:][np.argmax(p256[1:])]),
                     "ecg_dominant_now": power_spectrum(xe, fse)["dominant_freq"],
                     "ecg_true_freq_rr": 1.0 / reg["mean_interval"], "bpm": 60.0 / reg["mean_interval"]}
+    # v1.1 (aneks 1): dominujaca czestotliwosc EKG w zaleznosci od nperseg
+    out["welch"]["ecg_dominant_by_nperseg"] = {str(k): float(power_spectrum(xe, fse, nperseg=k)["dominant_freq"])
+                                               for k in (256, 512, 1024, 2048)}
 
     # bug 1 (konfiguracja z test_bio_core.py)
     rng = np.random.default_rng(1)
@@ -87,6 +91,10 @@ def main():
                    "x6_local_max": bool(x1[6] >= x1[max(0, 6 - 5):6 + 6].max()),
                    "peak_fraction": float(np.mean(x1 > 0.5)),
                    "detect_peaks_now": len(eng.detect_peaks(x1, distance=10))}
+    # v1.1 (aneks 1): ile probek szumu (poza szczytami) jest lokalnym maksimum powyzej starego progu
+    thr = med + 1.5 * mad
+    noise_lm = [i for i in range(1, 499) if i % 20 and x1[i] > thr and x1[i] > x1[i - 1] and x1[i] >= x1[i + 1]]
+    out["bug1"]["noise_local_max_above_old"] = len(noise_lm)
 
     # bug 2 (konfiguracja z test_bio_core.py: nieregularny sygnal, seed 0, max_lag 60)
     rng = np.random.default_rng(0)
@@ -129,7 +137,8 @@ def main():
     out["twist"] = {"pct_with_t": 100 * float(np.mean(rw)), "pct_without_t": 100 * float(np.mean(rwo))}
 
     # trend: README podaje liczby 0.000433..., szukamy konfiguracji w repo
-    hits = subprocess.run(["git", "-C", str(REPO), "grep", "-l", "0.000433"], capture_output=True, text=True).stdout.split()
+    hits = [f for f in subprocess.run(["git", "-C", str(REPO), "grep", "-l", "0.000433"], capture_output=True,
+                                      text=True).stdout.split() if not f.startswith("docs/audit/")]
     out["trend"] = {"files_with_number": hits}
 
     # envelope_drop / bezdech

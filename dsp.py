@@ -227,8 +227,10 @@ def power_spectrum(x, fs: float, nperseg: int | None = None) -> dict:
         # fundamentalną częstotliwość ~1.17Hz (70bpm) EKG/pulsu od jej
         # najbliższych harmonicznych - zweryfikowano empirycznie: przy
         # nperseg=256 dominant_freq dla zdrowego demo EKG (70bpm) wychodził
-        # błędnie ~1.95Hz (2. harmoniczna), a przy nperseg>=1024 poprawnie
-        # ~1.22Hz (blisko prawdziwych 1.1667Hz).
+        # błędnie ~1.95Hz (2. harmoniczna). UWAGA (audyt, docs/audit/): wynik
+        # zależy od okna i skacze między harmonicznymi - nperseg=1024 daje ~1.22Hz,
+        # ale 2048 (obecny cap przy n=15000) ~2.32Hz. Dla EKG źródłem częstotliwości
+        # rytmu jest bpm z odstępów RR, nie to widmo.
         nperseg = min(2048, max(8, n // 4))
     nperseg = min(nperseg, n)
 

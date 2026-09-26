@@ -170,9 +170,9 @@ def analyze_signal(t, x, fs, signal_type: str, apply_filter: bool = False, inclu
     # OPCJONALNY, DODATKOWY alert "zbiorcza zmiana stanu sygnału" (patrz
     # khipu_bio_alert.py) - łączy WSZYSTKIE cechy okna (rytm, anomalie,
     # twist, trend...) w jeden dyskretny odcisk stanu i porównuje sąsiednie
-    # okna czasu. Domyślnie WYŁĄCZONY (KHIPU_BOTTLENECK_ENABLED=False w
-    # khipu_bio_alert.py) - dopóki ktoś świadomie nie włączy tej flagi,
-    # wynik jest identyczny jak przed dodaniem tego modułu. Liczony na
+    # okna czasu. Sterowany KHIPU_BOTTLENECK_ENABLED w khipu_bio_alert.py (obecnie
+    # True - patrz README); po wyłączeniu (False) wynik jest identyczny jak przed
+    # dodaniem tego modułu. Liczony na
     # SUROWYM `x` (nie x_analysis) niezależnie od apply_filter, żeby wynik
     # zawsze odpowiadał parametrom zwalidowanym w README. Failuje cicho -
     # to dodatkowy sygnał, awaria tutaj nie ma prawa wywrócić reszty analizy.
@@ -181,9 +181,9 @@ def analyze_signal(t, x, fs, signal_type: str, apply_filter: bool = False, inclu
     # TEN blok niezależnie od KHIPU_BOTTLENECK_ENABLED - walidacja tego modułu
     # (patrz README, sekcja KHIPU) była robiona WYŁĄCZNIE na pełnych,
     # gotowych nagraniach demo, nie na krótkich, narastających oknach
-    # strumienia na żywo; okna niektórych typów (np. puls: 120s) są też
-    # dłuższe niż domyślny bufor streamingu tego typu, więc regime_score_series
-    # dostałoby na starcie streamu za mało danych na sensowny wynik.
+    # strumienia na żywo; na starcie streamu bufor jest krótszy niż okno KHIPU (np. puls:
+    # okno 120s, bufor dochodzi do 180s), więc regime_score_series dostałoby na
+    # starcie za mało danych na sensowny wynik.
     if include_khipu:
         try:
             from khipu_bio_alert import (

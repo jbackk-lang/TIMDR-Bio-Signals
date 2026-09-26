@@ -1,5 +1,8 @@
 """Karty twierdzeń README (TIMDR-Bio-Signals) dla tools/claim_audit.py.
-Reguły: docs/audit/CLAIM_AUDIT_PREREG.md. Przeliczenia: docs/audit/RECOMPUTE_BIO.json (recompute_bio.py).
+Reguły: docs/audit/CLAIM_AUDIT_PREREG.md + CLAIM_AUDIT_ADDENDUM_1.md. Przeliczenia: docs/audit/RECOMPUTE_BIO.json.
+
+v1.1 (po przebiegu 1 i poprawce README): nowe cytaty F10 (rozbite na F10/F13/F14), B3, B4, B5, B9, W2, W3, K2, K6;
+komunikat B4 liczony; W3 z ujawnieniem (UJAWNIONE).
 """
 from __future__ import annotations
 
@@ -209,6 +212,68 @@ def e_window():
     return R(ok, f"wykryte {e['ranges_s']} s; na resp_normal: {e['normal_ranges']}", "KOD REPO; epizod 150–170 s z kodu")
 
 
+def f_welch_before():
+    w = rc()["welch"]
+    return R(near(1.95, w["ecg_dominant_256"]) and near(1.17, w["ecg_true_freq_rr"]),
+             f"nperseg=256: {c(w['ecg_dominant_256'])} Hz; prawdziwa {c(w['ecg_true_freq_rr'])} Hz", "NIEZALEŻNE + KOD REPO")
+
+
+def f_welch_sweep():
+    b = rc()["welch"]["ecg_dominant_by_nperseg"]
+    ok = "min(2048" in src("dsp.py") and near(2.32, b["2048"], 0.02) and near(1.22, b["1024"], 0.02) and near(2.44, b["512"], 0.02)
+    return R(ok, "; ".join(f"{k}: {c(v)} Hz" for k, v in b.items()), "KOD REPO")
+
+
+def f_welch_test():
+    return R('assert spec["dominant_freq"] < 5 * true_freq' in src("test_dsp.py"), "test: dominant_freq < 5 × prawdziwa", "KOD")
+
+
+def b_mad_v11():
+    v = rc()["bug1"]["buggy_threshold"]
+    return R(near(0.020, v), f"mediana + 1,5·MAD = {c(v, 4)}", "konfiguracja z testu bug 1")
+
+
+def b_noise_v11():
+    n = rc()["bug1"]["noise_local_max_above_old"]
+    return R(n == 42, f"{n} lokalnych maksimów szumu powyżej starego progu", "")
+
+
+def b_std_v11():
+    v = rc()["bug1"]["fixed_threshold"]
+    return R(near(0.66, v), f"mediana + 3·std = {c(v)}", "")
+
+
+def b_cand_v11():
+    t = rc()["bug2"]["candidate_test_copy"]
+    return R(round(t["power"], 3) == 0.684 and t["n_periods"] == 60, f"power {c(t['power'])}, {t['n_periods']} okresów",
+             "konfiguracja z testu bug 2")
+
+
+def w_rates_v11():
+    w = rc()["twist"]
+    return R(round(w["pct_with_t"], 2) == 0.07 and round(w["pct_without_t"], 2) == 0.02,
+             f"z t {c(w['pct_with_t'])}%, bez t {c(w['pct_without_t'])}%", "konfiguracja z testu twist")
+
+
+def w_trend_v11():
+    f = rc()["trend"]["files_with_number"]
+    return Result("UJAWNIONE" if f == ["README.md"] else SPRZECZNE, f"liczby tylko w: {f}",
+                  "R9: brak konfiguracji w repo - README to teraz mówi")
+
+
+def k_ranges_v11():
+    k = rc()["khipu"]
+    cv, pw = k["ecg_cv_range"], k["generic_power_range"]
+    ok = 0.003 / 3 <= cv[0] and cv[1] <= 0.5 * 3 and -1 <= pw[0] and pw[1] <= 1
+    return R(ok, f"cv EKG {c(cv[0])}–{c(cv[1])}; moc rytmu {c(pw[0])}–{c(pw[1])}", "R11")
+
+
+def k_off_v11():
+    ok = "def test_switch_is_boolean_and_actually_gates_api_result" in src("test_khipu_bio_alert.py") \
+        and rc()["tests"]["returncode"] == 0 and "if KHIPU_BOTTLENECK_ENABLED" in src("api.py")
+    return R(ok, "api.py liczy KHIPU tylko przy włączonej fladze; test przełącznika przechodzi", "KOD")
+
+
 def a_raw():
     v = rc()["raw_ecg_anomalies_pct"]
     return R(7 * 0.85 <= v <= 8 * 1.15, f"{c(v, 1)}% próbek ecg_normal", "KOD REPO")
@@ -281,36 +346,39 @@ CLAIMS = [
     Claim("F7", "EEG (10Hz alfa) → wykryte 10.0Hz; oddech (~15/min=0.25Hz) → wykryte 0.253Hz", f_welch_known),
     Claim("F8", "(stały cap 256 próbek) - dla EKG (fs=250Hz, n=15000) dawało to rozdzielczość ~1Hz", f_welch_res),
     Claim("F9", "(~1.17Hz przy 70bpm)", f_welch_true),
-    Claim("F10", "`dominant_freq` błędnie wychodziło ~1.95Hz zamiast ~1.17Hz. Naprawiono podniesieniem górnego capu okna do "
-                 "2048 próbek", f_welch_bug),
+    Claim("F10", "Skutek: `dominant_freq` wychodziło ~1.95Hz zamiast ~1.17Hz", f_welch_before),
+    Claim("F13", "Górny cap okna podniesiono do 2048 próbek, ale to NIE naprawia wyniku dla demo EKG: przy nperseg=2048 "
+                 "wychodzi ~2.32Hz (2. harmoniczna), przy 1024 ~1.22Hz, przy 512 ~2.44Hz", f_welch_sweep),
+    Claim("F14", "Test sprawdza tylko, że wynik jest mniejszy niż 5× prawdziwa częstotliwość", f_welch_test),
     Claim("F11", "(EKG 0.5-40Hz, EEG 1-45Hz, oddech 0.05-1Hz; puls pomijany - zbyt niska częstotliwość próbkowania, fs=0.5Hz", f_bands),
     Claim("F12", "(np. 20-60x, dobranym pod typ sygnału - inaczej demo pulsu trwałoby 10 minut) i co ~2 sekundy nowych danych", f_stream),
     Claim("B1", "### Bug 1 — `detect_peaks`: próg z MAD zawodzi przy rzadkich szczytach", b_head1),
     Claim("B2", "bo MAD jest zdominowany przez te ~95% próbek, które są szumem", b_95),
-    Claim("B3", "(amplituda szczytu 1.0, szum std=0.02) oryginalny próg `mediana + 1.5·MAD` wychodzi ≈ 0.024", b_mad),
-    Claim("B4", "pojedyncza próbka szumu (`x[6]=0.0349`) była fałszywie wykrywana jako \"szczyt\"", b_x6),
-    Claim("B5", "próg zmieniony na `mediana + 3.0·std(x)` (≈0.33 w tym samym przykładzie", b_std),
+    Claim("B3", "(amplituda szczytu 1.0, szum std=0.02) oryginalny próg `mediana + 1.5·MAD` wychodzi ≈ 0.020", b_mad_v11),
+    Claim("B4", "w tym sygnale 42 próbki szumu (lokalne maksima poza prawdziwymi szczytami) przekraczają stary próg", b_noise_v11),
+    Claim("B5", "próg zmieniony na `mediana + 3.0·std(x)` (≈0.66 w tym samym przykładzie", b_std_v11),
     Claim("B6", "(indeksy `0` i `n-1` mogły wcześniej nigdy nie zostać wykryte jako szczyt)", b_edges),
     Claim("B7", "### Bug 2 — odrzucony kandydat: `rhythm()` bez filtra lokalnych maksimów", b_head2),
     Claim("B8", "detrend przez prostą linię `linspace(x[0], x[-1], n)`", b_linspace),
-    Claim("B9", "kandydat mimo to zgłaszał `power=0.656` (powyżej własnego progu 0.4) i aż 60 \"wykrytych okresów\"", b_cand),
+    Claim("B9", "kandydat mimo to zgłaszał `power=0.684` (powyżej własnego progu 0.4) i aż 60 \"wykrytych okresów\"", b_cand_v11),
     Claim("B10", "daje poprawnie `power=0.0, periods=[]`", b_own),
     Claim("W1", "liczy drugą pochodną przez dwukrotne `np.gradient(x, t)`, co poprawnie obsługuje sygnały o nierównomiernym "
                 "próbkowaniu w czasie (w przeciwieństwie do `np.diff(x, n=2)`", w_code),
-    Claim("W2", "(0.05–0.06% w obu wariantach, 10 powtórzeń)", w_rates),
-    Claim("W3", "wyniki zgodne co do ~10 miejsc po przecinku (`0.00043334633260878435` vs `0.00043334633260879205`)", w_trend),
+    Claim("W2", "(0.07% z `t` i 0.02% bez `t`, 10 powtórzeń", w_rates_v11),
+    Claim("W3", "wyniki zgodne co do ~10 miejsc po przecinku (`0.00043334633260878435` vs `0.00043334633260879205`; "
+                "jednorazowe sprawdzenie - konfiguracji tego porównania nie zapisano w repo)", w_trend_v11),
     Claim("E1", "maksymalne |z| całego sygnału wynosiło tylko 1.21, dużo poniżej progu 3.5", e_z),
     Claim("E2", "poprawnie wykryła okno 141.6s–178.0s, pokrywające się z wstrzykniętym epizodem bezdechu (150s–170s), bez "
                 "fałszywych alarmów na normalnym oddechu", e_window),
     Claim("A1", "daje ~7-8% \"fałszywych\" anomalii", a_raw),
     Claim("P1", "| EEG | 40 próbek | — | | oddech | 60 próbek | 10 s | | puls | 90 próbek | 60 s |", p_table),
     Claim("K1", "wyłącznik `KHIPU_BOTTLENECK_ENABLED` (obecnie: WŁĄCZONY)", k_on),
-    Claim("K2", "(bpm rzędu dziesiątek, cv rzędu 0.01-0.3, moc rytmu w [-1,1]...)", k_ranges),
+    Claim("K2", "(bpm rzędu dziesiątek, cv rzędu 0.003-0.5, moc rytmu w [-1,1]...)", k_ranges_v11),
     Claim("K3", "Sprawdzone empirycznie na wszystkich 8 syntetycznych scenariuszach demo", k_eight),
     Claim("K4", "| EKG | 10s / 2.5s | 0 | 2 | 2/2 | | EEG | 5s / 2.5s | 2 | 3 | 2/3 | | oddech | 30s / 7.5s | 1 | 4 | 1/4 | "
                 "| puls | 120s / 15s | 3 | 1 | 1/1 |", k_table),
     Claim("K5", "`KHIPU_VALIDATED_TYPES = {\"ecg\", \"eeg\"}`", k_validated),
-    Claim("K6", "Domyślnie (`False`) wynik jest identyczny jak przed dodaniem tego modułu", k_default),
+    Claim("K6", "Po wyłączeniu (`False`) wynik jest identyczny jak przed dodaniem tego modułu", k_off_v11),
     Claim("K7", "Testy: 18 w `test_khipu_bio_alert.py` (moduł: kształt/determinizm/próg/ wyłącznik) + 4 w `test_api_khipu.py`", k_tests),
     Claim("K8", "`/api/stream` woła go zawsze z `include_khipu=False`", k_stream),
 ]

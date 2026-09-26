@@ -161,8 +161,12 @@ EEG (10Hz alfa) → wykryte 10.0Hz; oddech (~15/min=0.25Hz) → wykryte
 zbyt mały (stały cap 256 próbek) - dla EKG (fs=250Hz, n=15000) dawało
 to rozdzielczość ~1Hz, za grubą, by odróżnić częstotliwość
 fundamentalną (~1.17Hz przy 70bpm) od jej najbliższej harmonicznej.
-Skutek: `dominant_freq` błędnie wychodziło ~1.95Hz zamiast ~1.17Hz.
-Naprawiono podniesieniem górnego capu okna do 2048 próbek.
+Skutek: `dominant_freq` wychodziło ~1.95Hz zamiast ~1.17Hz. Górny cap okna
+podniesiono do 2048 próbek, ale to NIE naprawia wyniku dla demo EKG: przy
+nperseg=2048 wychodzi ~2.32Hz (2. harmoniczna), przy 1024 ~1.22Hz, przy 512
+~2.44Hz - wynik skacze między harmonicznymi zależnie od okna (audyt,
+`docs/audit/`). Test sprawdza tylko, że wynik jest mniejszy niż 5× prawdziwa
+częstotliwość.
 
 **Udokumentowane ograniczenie (nie błąd):** nawet z poprawionym
 oknem, dla **surowego przebiegu EKG** (kształt impulsowy zespołów QRS)
@@ -209,12 +213,12 @@ szczytem.
 
 **Dowód (reprodukcja w `test_bug1_reprodukcja_oryginalnego_bledu_progu_mad`):**
 dla regularnego sygnału EKG-podobnego (amplituda szczytu 1.0, szum
-std=0.02) oryginalny próg `mediana + 1.5·MAD` wychodzi ≈ 0.024 — czyli
-praktycznie w paśmie szumu. Skutek: pojedyncza próbka szumu
-(`x[6]=0.0349`) była fałszywie wykrywana jako "szczyt".
+std=0.02) oryginalny próg `mediana + 1.5·MAD` wychodzi ≈ 0.020 — czyli praktycznie w
+paśmie szumu. Skutek: w tym sygnale 42 próbki szumu (lokalne maksima poza
+prawdziwymi szczytami) przekraczają stary próg, czyli byłyby kandydatami na
+fałszywe "szczyty".
 
-**Naprawa:** próg zmieniony na `mediana + 3.0·std(x)` (≈0.33 w tym
-samym przykładzie — wyraźnie oddziela szum od prawdziwych szczytów).
+**Naprawa:** próg zmieniony na `mediana + 3.0·std(x)` (≈0.66 w tym samym przykładzie — wyraźnie oddziela szum od prawdziwych szczytów).
 Dodatkowo naprawiono wykluczanie brzegów sygnału (indeksy `0` i `n-1`
 mogły wcześniej nigdy nie zostać wykryte jako szczyt).
 
@@ -233,7 +237,7 @@ funkcji autokorelacji.
 
 **Dowód (`test_bug2_reprodukcja_odrzuconego_kandydata_rhythm`):** na
 sygnale celowo **nieregularnym** (arytmicznym — bez prawdziwego
-rytmu) kandydat mimo to zgłaszał `power=0.656` (powyżej własnego progu
+rytmu) kandydat mimo to zgłaszał `power=0.684` (powyżej własnego progu
 0.4) i aż 60 "wykrytych okresów". To dyskwalifikujący błąd dla
 wykrywacza arytmii — sygnał arytmiczny musi dawać *niską* moc rytmu,
 nie wysoką.
@@ -251,15 +255,17 @@ Wersja `twist()` z `candidate_user.py` liczy drugą pochodną przez
 dwukrotne `np.gradient(x, t)`, co poprawnie obsługuje sygnały o
 nierównomiernym próbkowaniu w czasie (w przeciwieństwie do
 `np.diff(x, n=2)`, który zakłada stały krok). Zweryfikowane
-empirycznie: porównywalny, niski odsetek fałszywych alarmów na czystym
-szumie (0.05–0.06% w obu wariantach, 10 powtórzeń). **Przyjęte:**
+empirycznie: niski odsetek fałszywych alarmów na czystym szumie w obu wariantach (0.07% z
+`t` i 0.02% bez `t`, 10 powtórzeń, konfiguracja z
+`test_twist_z_czasem_i_bez_maja_podobny_niski_falszywy_alarm`). **Przyjęte:**
 `twist()` w `bio_core.py` przyjmuje teraz opcjonalny parametr `t`; gdy
 podany, używa `np.gradient`, w przeciwnym razie działa jak dotychczas.
 
 `trend()` z kodu nadesłanego do wglądu została zweryfikowana liczbowo
 względem mojej wersji na syntetycznym sygnale ze znacznikami czasu w
 skali epoki Unix — wyniki zgodne co do ~10 miejsc po przecinku
-(`0.00043334633260878435` vs `0.00043334633260879205`). Zachowana
+(`0.00043334633260878435` vs `0.00043334633260879205`; jednorazowe sprawdzenie -
+konfiguracji tego porównania nie zapisano w repo). Zachowana
 została moja wersja (liczy nachylenie tylko dla ostatniego okna, zgodnie
 z konwencją API używaną w innych modułach TIMDR w tym zestawie repo).
 
@@ -333,7 +339,7 @@ filtrem" (ten sam wzorzec Walsha-Hadamarda co w wersji giełdowej). Cechy
 wejściowe są z-score'owane (MAD-z, ten sam `_mad_z` co reszta
 `bio_core.py`) kolumna po kolumnie, po wszystkich oknach danego
 nagrania, zanim trafią do projekcji - bo mają bardzo różne surowe skale
-(bpm rzędu dziesiątek, cv rzędu 0.01-0.3, moc rytmu w [-1,1]...).
+(bpm rzędu dziesiątek, cv rzędu 0.003-0.5, moc rytmu w [-1,1]...).
 
 ### Walidacja na `demo_scenarios.py` — wynik NIEJEDNOLITY, przeczytaj przed włączeniem
 
@@ -365,8 +371,7 @@ dopisuje do wyniku `/api/demo` i `/api/analyze` pola `khipu_regime_last`,
 `khipu_regime_mean`, `khipu_regime_alerts` (komunikaty),
 `khipu_regime_alerts_idx` (indeksy próbek - naniesione na wykres
 fioletowymi znacznikami w dashboardzie), `n_khipu_regime_alerts`,
-`khipu_regime_alert_active`, `khipu_regime_validated`. Domyślnie
-(`False`) wynik jest identyczny jak przed dodaniem tego modułu.
+`khipu_regime_alert_active`, `khipu_regime_validated`. Po wyłączeniu (`False`) wynik jest identyczny jak przed dodaniem tego modułu.
 
 **Wyłączony na `/api/stream`, niezależnie od `KHIPU_BOTTLENECK_ENABLED`.**
 `analyze_signal()` przyjmuje parametr `include_khipu` (domyślnie `True`);
